@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>线稿立体工坊 · Line-art to 3D Print</title>
+<meta name="description" content="Turn a line drawing or photo into a 3D-printable cut-out or relief model, with an optional stand and engraved text. Runs entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 28 9.5v13L16 29 4 22.5v-13z' fill='%23d9531e'/%3E%3Cpath d='M16 3v26M4 9.5l12 6.5 12-6.5' stroke='%23fff' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>线稿立体工坊</h1>
+    <p>上传一张线稿或照片，转成黑白线条，再生成可以直接 3D 打印的剪影或浮雕模型。全部在浏览器里完成，图片不会上传。</p>
+  </header>
+
+  <div class="grid">
+    <div class="controls">
+      <section class="step" aria-labelledby="s1">
+        <h2 id="s1"><span class="n">1</span>图片</h2>
+        <label class="drop" id="drop" tabindex="0">
+          <strong>点击选择或拖入图片</strong>
+          <span id="srcName">现在显示的是示例图</span>
+          <input type="file" id="file" accept="image/*" hidden>
+        </label>
+        <p class="hint">在「原图」里拖动鼠标可以框选要用的部分。</p>
+        <div class="btns"><button class="btn" id="resetCrop" type="button">取消框选</button><button class="btn" id="useSample" type="button">换回示例图</button></div>
+      </section>
+
+      <section class="step" aria-labelledby="s2">
+        <h2 id="s2"><span class="n">2</span>黑白线稿</h2>
+        <div class="row two"><label>阈值方式</label>
+          <div class="seg" data-name="thMode"><button type="button" data-v="auto" aria-pressed="true">自动</button><button type="button" data-v="manual">手动</button><button type="button" data-v="adaptive">照片</button></div></div>
+        <div class="row" id="rowTh"><label for="threshold">灵敏度</label><input type="range" id="threshold" min="20" max="250" value="190"><output for="threshold"></output></div>
+        <div class="row" id="rowC" hidden><label for="adaptC">细节</label><input type="range" id="adaptC" min="2" max="40" value="10"><output for="adaptC"></output></div>
+        <label class="check"><input type="checkbox" id="invert">反相（浅色线条、深色背景时勾选）</label>
+        <div class="row"><label for="speck">去除碎点</label><input type="range" id="speck" min="0" max="4" step="0.1" value="0.4"><output for="speck"></output></div>
+        <div class="row two"><label>孤立线条</label>
+          <div class="seg" data-name="islands"><button type="button" data-v="connect" aria-pressed="true">接到旁边</button><button type="button" data-v="remove">删除</button></div></div>
+        <label class="check"><input type="checkbox" id="smooth" checked>平滑线条、统一粗细</label>
+        <div class="row" id="rowLW"><label for="lineWidth">线宽</label><input type="range" id="lineWidth" min="0.6" max="2.5" step="0.05" value="0.9"><output for="lineWidth"></output></div>
+        <div class="row" id="rowSm"><label for="smoothness">平滑程度</label><input type="range" id="smoothness" min="0.1" max="1.5" step="0.05" value="0.6"><output for="smoothness"></output></div>
+        <div class="row"><label for="minWidth">最细线宽</label><input type="range" id="minWidth" min="0.4" max="1.5" step="0.05" value="0.7"><output for="minWidth"></output></div>
+        <div class="row two"><label>手动修改</label>
+          <div class="seg" data-name="brush"><button type="button" data-v="off" aria-pressed="true">关</button><button type="button" data-v="erase">擦除</button><button type="button" data-v="draw">补画</button></div></div>
+        <div class="row" id="rowBrush" hidden><label for="brushSize">笔刷大小</label><input type="range" id="brushSize" min="0.5" max="8" step="0.5" value="2"><output for="brushSize"></output></div>
+        <div class="btns" id="brushBtns" hidden><button class="btn" type="button" id="undoBrush">撤销一笔</button><button class="btn" type="button" id="clearBrush">清除全部修改</button></div>
+        <p class="hint" id="brushHint" hidden>在「线稿」里涂抹：擦掉多余的字、杂点，或补上断开的线。</p>
+      </section>
+
+      <section class="step" aria-labelledby="s3">
+        <h2 id="s3"><span class="n">3</span>模型</h2>
+        <div class="row two"><label>类型</label>
+          <div class="seg" data-name="kind"><button type="button" data-v="cutout" aria-pressed="true">镂空剪影</button><button type="button" data-v="plaque">浮雕牌</button></div></div>
+        <div class="row"><label for="width">图案宽度</label><input type="range" id="width" min="40" max="250" step="5" value="120"><output for="width"></output></div>
+        <div class="row" data-for="cutout"><label for="thick">剪影厚度</label><input type="range" id="thick" min="1.5" max="8" step="0.5" value="3"><output for="thick"></output></div>
+        <label class="check" data-for="cutout"><input type="checkbox" id="bar" checked>底部加连接横条</label>
+        <div class="row" data-for="plaque" hidden><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
+        <div class="row" data-for="plaque" hidden><label for="reliefH">线条凸起</label><input type="range" id="reliefH" min="0.6" max="4" step="0.2" value="1.6"><output for="reliefH"></output></div>
+        <div class="row two"><label>底座</label>
+          <div class="seg" data-name="base"><button type="button" data-v="none">不要</button><button type="button" data-v="onepiece">一体打印</button><button type="button" data-v="separate" aria-pressed="true">分开打印</button></div></div>
+        <details class="more" id="baseMore" open>
+          <summary>底座尺寸</summary>
+          <div class="row"><label for="baseD">前后深度</label><input type="range" id="baseD" min="8" max="60" step="1" value="20"><output for="baseD"></output></div>
+          <div class="row"><label for="baseH">底座高度</label><input type="range" id="baseH" min="3" max="20" step="0.5" value="5"><output for="baseH"></output></div>
+          <div class="row"><label for="overhang">两侧外伸</label><input type="range" id="overhang" min="0" max="40" step="1" value="15"><output for="overhang"></output></div>
+          <div class="row"><label for="insert">插入深度</label><input type="range" id="insert" min="1.5" max="10" step="0.5" value="3.5"><output for="insert"></output></div>
+          <div class="row" id="rowClr"><label for="clearance">卡槽间隙</label><input type="range" id="clearance" min="0" max="0.6" step="0.05" value="0.25"><output for="clearance"></output></div>
+          <label class="check"><input type="checkbox" id="step" checked>顶面加一级台阶</label>
+        </details>
+      </section>
+
+      <section class="step" aria-labelledby="s4">
+        <h2 id="s4"><span class="n">4</span>刻字</h2>
+        <div class="row two"><label for="text1" id="t1label">底座正面</label><input type="text" id="text1" placeholder="例如 Anna &amp; Ben" maxlength="60"></div>
+        <div class="row two" id="rowT2"><label for="text2">底座背面</label><input type="text" id="text2" placeholder="例如 12 June 2025" maxlength="60"></div>
+        <div class="row two"><label for="font">字体</label>
+          <select id="font"><option value="script">手写体</option><option value="serif">衬线体</option><option value="sans">无衬线体</option><option value="custom" disabled>上传的字体</option></select></div>
+        <div class="btns"><label class="btn" for="fontFile" tabindex="0">上传字体文件…</label><input type="file" id="fontFile" accept=".ttf,.otf,.woff" hidden></div>
+        <p class="hint">自带字体只有英文字母和数字。要刻中文，请上传一个中文字体（.ttf / .otf）。</p>
+        <div class="row"><label for="textH">字高</label><input type="range" id="textH" min="2" max="12" step="0.2" value="4.2"><output for="textH"></output></div>
+        <div class="row"><label for="textD">刻字深度</label><input type="range" id="textD" min="0.3" max="1.5" step="0.1" value="0.6"><output for="textD"></output></div>
+        <p class="hint" id="textNote"></p>
+      </section>
+
+      <section class="step" aria-labelledby="s5">
+        <h2 id="s5"><span class="n">5</span>导出</h2>
+        <div class="files" id="fileList"></div>
+        <div class="btns">
+          <button class="btn primary" id="dlZip" type="button">下载全部（ZIP）</button>
+          <button class="btn" id="dlShot" type="button">保存效果图</button>
+          <button class="btn" id="dlLine" type="button">保存线稿</button>
+        </div>
+        <p class="toast" id="toast" role="status"></p>
+      </section>
+    </div>
+
+    <section class="viewer" aria-label="预览">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="src" aria-selected="false">原图</button>
+        <button role="tab" data-tab="line" aria-selected="false">线稿</button>
+        <button role="tab" data-tab="3d" aria-selected="true">3D 预览</button>
+      </div>
+      <div class="stage">
+        <canvas class="fit" id="srcCanvas" hidden></canvas>
+        <canvas class="fit" id="lineCanvas" hidden></canvas>
+        <div id="glwrap"></div>
+        <div class="legend" id="legend"></div>
+        <div class="busy" id="busy" hidden>处理中…</div>
+      </div>
+      <div>
+        <div class="status" id="status"></div>
+        <ul class="warnings" id="warnings"></ul>
+      </div>
+    </section>
+  </div>
+</div>
+<footer class="foot">Built with <a href="https://github.com/elalish/manifold">Manifold</a>, <a href="https://threejs.org">three.js</a>, <a href="https://d3js.org">d3</a> and <a href="https://opentype.js.org">opentype.js</a> · <a href="https://github.com/TongCHEN779/3D-Artifact">Source on GitHub</a></footer>
+<script src="vendor/three/three.min.js"></script>
+<script src="vendor/three/OrbitControls.js"></script>
+<script src="vendor/d3/d3.min.js"></script>
+<script src="vendor/opentype/opentype.min.js"></script>
+<script src="js/raster.js"></script>
+<script src="js/lineart.js"></script>
+<script src="js/models.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
