@@ -63,13 +63,16 @@
         <div class="row" data-for="cutout"><label for="thick">剪影厚度</label><input type="range" id="thick" min="1.5" max="8" step="0.5" value="3"><output for="thick"></output></div>
         <label class="check" data-for="cutout"><input type="checkbox" id="bar" checked>底部加连接横条</label>
         <div class="row" data-for="plaque" hidden><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
-        <div class="row" data-for="litho" hidden><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="26"><output for="facets"></output></div>
+        <div class="row two" data-for="litho" hidden><label>表面</label>
+          <div class="seg" data-name="surface"><button type="button" data-v="facet" aria-pressed="false">多面体</button><button type="button" data-v="smooth" aria-pressed="true">平滑</button></div></div>
+        <div class="row" data-for="litho" hidden id="rowFacets"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="26"><output for="facets"></output></div>
         <div class="row" data-for="litho" hidden><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
         <div class="row" data-for="litho" hidden><label for="tMax">最厚（暗处）</label><input type="range" id="tMax" min="1.6" max="6" step="0.1" value="3.2"><output for="tMax"></output></div>
         <div class="row" data-for="litho" hidden><label for="gamma">对比度</label><input type="range" id="gamma" min="0.5" max="2" step="0.05" value="1"><output for="gamma"></output></div>
         <div class="row" data-for="litho" hidden><label for="frame">边框宽度</label><input type="range" id="frame" min="0" max="10" step="0.5" value="3"><output for="frame"></output></div>
+        <label class="check" data-for="litho" hidden><input type="checkbox" id="flip" checked>正面凸起（脸凸、头发凹）</label>
         <div class="row" data-for="litho" hidden><label for="bulge">明暗起伏</label><input type="range" id="bulge" min="0" max="20" step="0.5" value="6"><output for="bulge"></output></div>
-        <p class="hint" data-for="litho" hidden>起伏不改变厚度，只让整块板按明暗弯曲：亮处（通常是脸）向前鼓出，正面看更立体，背光效果不变。0 为平板；边框和插进底座的底边保持平直。</p>
+        <p class="hint" data-for="litho" hidden>正面凸起：把正面的凹凸反过来，亮处（脸）凸出、暗处（头发）凹进，背面相应错开，每处厚度不变，所以背光效果一样；总厚度约为 2×最厚 − 最薄。明暗起伏不改变厚度，只让整块板按明暗弯曲：亮处（通常是脸）向前鼓出，正面看更立体，背光效果不变。0 为平板；边框和插进底座的底边保持平直。</p>
         <p class="hint" data-for="litho" hidden id="facetHint"></p>
         <p class="hint" data-for="litho" hidden>越暗的地方越厚。用白色或浅色耗材、100% 填充打印，背后打光看。</p>
         <div class="row" data-for="plaque" hidden><label for="reliefH">线条凸起</label><input type="range" id="reliefH" min="0.6" max="4" step="0.2" value="1.6"><output for="reliefH"></output></div>

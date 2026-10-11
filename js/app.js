@@ -18,7 +18,7 @@ const facetCount = v => Math.round(1000 * Math.pow(200, v / 100) / 100) * 100;
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, surface: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
@@ -46,7 +46,7 @@ function P() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: facetCount(n('facets')), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'),
+    kind: seg.kind, facets: facetCount(n('facets')), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, smooth: seg.surface === 'smooth',
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -62,7 +62,9 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。`; }
+  if (litho) $('rowFacets').hidden = p.smooth;
+  if (litho && p.smooth) $('facetHint').textContent = '平滑表面：网格会一直加密，直到每一处与照片的误差都小于 0.02 mm，看不出棱角。顶点数由图片决定，文件会比多面体大。';
+  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
   $('baseMore').hidden = p.base === 'none';
@@ -375,6 +377,7 @@ function updateStatus(p) {
     const t = cache.litho.tri;
     add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
     add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
+    if (p.flip) add(`总厚 <b>${(2 * p.tMax - p.tMin).toFixed(1)} mm</b>（正面凸起）`);
     if (p.bulge > 0) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
     if (built) add(`模型 <b>${built.dims.map(v => v.toFixed(0)).join(' × ')} mm</b>`);
     return;
@@ -490,6 +493,7 @@ function notes(p) {
   if (p.base === 'none') L.push('平放打印，不需要支撑。');
   if (p.kind === 'plaque') L.push(`浮雕牌：打到 ${p.plateT} mm 高度时换色，底板和线条就是两种颜色。`);
   if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
+  if (p.kind === 'litho' && p.flip) L.push(`正面凸起：两面都有起伏（背面是反向浮雕，朝灯摆放），请竖着打印（底边朝下），不需要支撑。`);
   if (p.kind === 'litho' && p.bulge > 0) L.push(`曲面透光：背面跟着正面一起鼓起 ${p.bulge} mm，厚度处处不变。推荐竖着打印（底边朝下，不需要支撑）；平放打印时背面朝下需要少量支撑。`);
   else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(1)} mm，用 0.4 mm 喷嘴可以打印。`);
   if (p.text1 || p.text2) L.push('刻字较小，建议层高 0.1–0.12 mm。');
