@@ -115,7 +115,13 @@ function lithoManifold(tri, widthMM) {
   }
   const mesh = G(new MF.Mesh({ numProp: 3, vertProperties: V, triVerts: F }));
   try { return G(new MF.Manifold(mesh)); }
-  catch (e) { mesh.merge(); return G(new MF.Manifold(mesh)); }
+  catch (e) {
+    try { mesh.merge(); return G(new MF.Manifold(mesh)); }
+    catch (e2) {
+      let bad = 0; for (let i = 0; i < V.length; i++) if (!Number.isFinite(V[i])) bad++;
+      throw new Error(`Not manifold（透光浮雕网格：${n} 点，${tris.length / 3} 三角面，${countOpen(halfedges)} 条外边，${bad} 个无效坐标，图 ${w}×${h}）`);
+    }
+  }
 }
 function countOpen(he) { let k = 0; for (let i = 0; i < he.length; i++) if (he[i] === -1) k++; return k; }
 
