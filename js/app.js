@@ -10,11 +10,15 @@ const fmt = {
   smoothness: v => (+v).toFixed(2), minWidth: v => (+v).toFixed(2) + ' mm', brushSize: v => v + ' mm',
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
+  facets: v => facetCount(v).toLocaleString('zh-CN') + ' 点', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
   textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
+// facet slider is logarithmic: 0 → 1 000 points, 100 → 200 000 points
+const facetCount = v => Math.round(1000 * Math.pow(200, v / 100) / 100) * 100;
 const stageOf = {
-  width: 1, method: 2, detail: 2, outline: 2, faceBoost: 2, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
+  width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
@@ -40,9 +44,10 @@ document.querySelectorAll('input[type=text]').forEach(inp => inp.addEventListene
 function P() {
   const n = id => +$(id).value;
   return {
-    width: n('width'), method: seg.method, detail: n('detail') / 100, outline: $('outline').checked, face: $('faceBoost').checked, thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
+    width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
+    kind: seg.kind, facets: facetCount(n('facets')), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'),
+    thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
   };
@@ -50,24 +55,24 @@ function P() {
 
 function syncUI() {
   const p = P();
-  document.querySelectorAll('[data-m]').forEach(el => el.hidden = !el.dataset.m.split(' ').includes(p.method));
-  if (p.method === 'threshold') { $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive'; }
-  $('methodHint').textContent = p.method === 'threshold' ? '适合本来就是线稿、插画的图。照片请试试 AI 线稿或一笔画。'
-    : ({ ai: '用边缘识别模型找出物体的边界，不受明暗和纹理影响。', sketch: '用一个学过人类线描的模型，把照片画成手绘速写，再整理成可打印的线条。最适合人像。', oneline: '整幅画用一条不间断的线画完，打印出来天然是一整块。' }[p.method])
-      + (AI.ort ? '' : (p.method === 'sketch' ? ' 第一次使用会下载约 30 MB 的模型' : ' 第一次使用会下载约 20 MB 的模型') + '，之后都在你的设备上运行。');
-  $('threshold').disabled = p.thMode === 'auto';
-  $('rowLW').hidden = !(p.smooth || p.method === 'oneline'); $('rowSm').hidden = !p.smooth || p.method === 'oneline';
+  $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive';
+  $('rowLW').hidden = $('rowSm').hidden = !p.smooth;
   const br = seg.brush !== 'off';
   $('rowBrush').hidden = $('brushBtns').hidden = $('brushHint').hidden = !br;
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
+  const litho = p.kind === 'litho';
+  $('s2body').hidden = litho; $('s2note').hidden = !litho;
+  if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。`; }
+  document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
+  $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
   $('baseMore').hidden = p.base === 'none';
   $('rowClr').hidden = p.base !== 'separate';
   const standing = p.base !== 'none';
   $('rowT2').hidden = !standing;
   $('t1label').textContent = standing ? '底座正面' : '牌子底部';
-  const textOff = !standing && p.kind === 'cutout';
+  const textOff = !standing && (p.kind === 'cutout' || p.kind === 'litho');
   $('text1').disabled = textOff;
-  $('textNote').textContent = textOff ? '平放的剪影没有地方刻字。选择底座，或改成浮雕牌（字会凸起在牌子底部）。'
+  $('textNote').textContent = textOff ? (litho ? '透光浮雕本身不刻字。选择底座后，可以把字刻在底座上。' : '平放的剪影没有地方刻字。选择底座，或改成浮雕牌（字会凸起在牌子底部）。')
     : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里。';
   if (typeof drawLegend === "function") drawLegend();
 }
@@ -76,6 +81,7 @@ function onChange(id) {
   syncUI();
   if (id === 'brush') { if (seg.brush !== 'off') showTab('line'); drawLine(); return; }
   if (id === 'brushSize') return;
+  if (id === 'kind') { invalidate(seg.kind === 'litho' || cache.kind === 'litho' ? 2 : 3); return; }
   if (id === 'thMode' && seg.thMode === 'manual' && cache.autoTh) $('threshold').value = cache.autoTh;
   invalidate(stageOf[id] || 4);
 }
@@ -132,7 +138,7 @@ function makeSample() {
   return c;
 }
 function setSource(img, name) {
-  srcImg = img; crop = null; strokes = []; srcSerial++;
+  srcImg = img; crop = null; strokes = [];
   $('srcName').textContent = name;
   invalidate(1);
 }
@@ -198,8 +204,15 @@ $('srcCanvas').addEventListener('pointerup', () => {
 // ---------- line canvas & brush ----------
 let lineFit = null, painting = null, hover = null;
 function drawLine() {
+  const cv0 = $('lineCanvas');
+  if (!cv0.hidden && P().kind === 'litho') {
+    if (!cache.litho) return;
+    const pv = lithoPreview(cache.litho.tri, P()), f = lineFit = fitCanvas(cv0, pv.width, pv.height), x = cv0.getContext('2d');
+    x.fillStyle = css('--bed'); x.fillRect(0, 0, cv0.width, cv0.height); x.imageSmoothingEnabled = true;
+    x.drawImage(pv, f.ox, f.oy, pv.width * f.k, pv.height * f.k); return;
+  }
   const cv = $('lineCanvas'); if (cv.hidden || !cache.mask) return;
-  const { W, H, mask } = cache, bw = cache.view || cache.bw, f = lineFit = fitCanvas(cv, W, H), x = cv.getContext('2d');
+  const { W, H, mask } = cache, bw = cache.bw, f = lineFit = fitCanvas(cv, W, H), x = cv.getContext('2d');
   x.fillStyle = css('--bed'); x.fillRect(0, 0, cv.width, cv.height);
   const img = new ImageData(W, H), d = img.data;
   const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
@@ -253,15 +266,17 @@ async function run() {
   running = true; $('busy').hidden = false; await frame();
   const lvl = dirty; dirty = 9; const p = P();
   try {
-    if (lvl <= 2 && p.method !== 'threshold') {
-      $('busy').textContent = '准备…'; await frame();
-      stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); await stageAI(p);
-    } else if (lvl <= 2) { $('busy').textContent = '转成黑白…'; await frame();
+    if (p.kind === 'litho') {
+      if (lvl <= 2) { stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); cache.kind = 'litho'; }
+      if (lvl <= 4) { $('busy').textContent = '计算多面体…'; await frame(); await stage4(p); drawLine(); }
+    } else {
+    if (lvl <= 2) { $('busy').textContent = '转成黑白…'; await frame();
       stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); stage2(p);
       const t = trimmedCrop(cache.bw, cache.W, cache.H, cache.ec);
       if (t) { stage1(p, t); stage2(p); } }
     if (lvl <= 3) { $('busy').textContent = '整理线条…'; await frame(); stage3(p); drawLine(); }
     if (lvl <= 4) { $('busy').textContent = '生成模型…'; await frame(); await stage4(p); }
+    }
   } catch (err) { console.error(err); setWarnings(['处理时出错：' + (err && err.message || err)]); }
   $('busy').textContent = '处理中…'; $('busy').hidden = true; running = false;
   if (tab === 'src') drawSrc();
@@ -269,35 +284,16 @@ async function run() {
 
 function stage1(p, c) {
   const sx = c.x0 * srcImg.width, sy = c.y0 * srcImg.height, sw = (c.x1 - c.x0) * srcImg.width, sh = (c.y1 - c.y0) * srcImg.height;
-  let W = Math.min(1600, Math.round(p.width / 0.1)), H = Math.round(W * sh / sw);
-  if (H > 2000) { W = Math.round(W * 2000 / H); H = 2000; }
+  // lithophanes keep the photo's own resolution (up to 3000 px) so very fine facets have detail to follow
+  const cap = p.kind === 'litho' ? 3000 : 1600, capH = p.kind === 'litho' ? 3000 : 2000;
+  let W = p.kind === 'litho' ? Math.min(cap, Math.round(sw)) : Math.min(cap, Math.round(p.width / 0.1)), H = Math.round(W * sh / sw);
+  if (H > capH) { W = Math.round(W * capH / H); H = capH; }
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const x = cv.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
   x.imageSmoothingQuality = 'high'; x.drawImage(srcImg, sx, sy, sw, sh, 0, 0, W, H);
   const d = x.getImageData(0, 0, W, H).data, gray = new Float32Array(W * H);
   for (let i = 0; i < W * H; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
   Object.assign(cache, { gray, W, H, s: p.width / W, ec: c, color: cv });
-}
-let srcSerial = 0, aiCache = null;
-async function stageAI(p) {
-  const { W, H, s, ec } = cache;
-  const keyNow = [srcSerial, ec.x0, ec.y0, ec.x1, ec.y1, W, H].join('|');
-  if (!aiCache || aiCache.key !== keyNow) aiCache = { key: keyNow, A: {} };
-  const need = [p.method === 'sketch' ? 'sketch' : 'edge', 'subject', 'face'];
-  try {
-    for (const n of need) if (!(n in aiCache.A)) aiCache.A[n] = await aiPart(n, cache.color, W, H, t => { $('busy').textContent = t; });
-  } catch (err) { console.error(err); throw new Error('模型没能载入或运行（' + (err && err.message || err) + '）。可以先用「黑白阈值」。'); }
-  syncUI();
-  const A = { edge: p.method === 'sketch' ? aiCache.A.sketch : aiCache.A.edge, subject: aiCache.A.subject, face: aiCache.A.face };
-  $('busy').textContent = p.method === 'oneline' ? '规划一笔画路线…' : '整理线条…'; await frame();
-  const sk = aiStrokeSkeleton(A, W, H, s, p, strokes, ec);
-  cache.one = null;
-  if (p.method === 'oneline') {
-    cache.one = oneLinePath(sk, W, H, s, p, p.face ? A.face : null);
-    if (!cache.one) throw new Error('没有找到线条，试试把「细节」调高。');
-    cache.bw = fieldToMask(pathField(cache.one, W, H, Math.max(p.lineWidth, p.minWidth) / s));
-  } else cache.bw = dilate(sk, W, H, Math.max(1, Math.round(p.lineWidth / (2 * s))));
-  cache.face = A.face;
 }
 // trim empty margins so "图案宽度" is the width of the drawing itself
 function trimmedCrop(bw, W, H, c) {
@@ -320,7 +316,6 @@ function stage2(p) {
 function stage3(p) {
   const { W, H, s } = cache; let m = cache.bw.slice();
   const stats = {};
-  if (p.method === 'oneline' && cache.one) return stage3OneLine(p);
   if (p.kind === 'cutout' && p.bar) addBottomBar(m, W, H, Math.round(4 / s));
   const rMin = Math.max(1, Math.floor(p.minWidth / (2 * s))), bridgeR = Math.max(rMin + 1, Math.round(0.45 / s));
   // a relief plaque holds every line on its plate, so islands are fine there
@@ -328,34 +323,29 @@ function stage3(p) {
   if (islands !== 'remove') m = thickenThin(m, W, H, rMin);
   if (islands !== 'keep') m = resolveIslands(m, W, H, rMin, bridgeR, islands, stats);
   let field;
-  if (p.smooth) field = uniformLines(m, W, H, s, { lineWidth: Math.max(p.lineWidth, p.minWidth), smoothness: p.smoothness, noFill: p.method !== 'threshold' });
+  if (p.smooth) field = uniformLines(m, W, H, s, { lineWidth: Math.max(p.lineWidth, p.minWidth), smoothness: p.smoothness });
   else field = maskToField(m, W, H, 0.07 / s);
   let mask = fieldToMask(field);
   const fixed = islands === 'keep' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, islands, {});
   for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
   mask = fixed;
   const pieces = label(opening(mask, W, H, rMin), W, H).n;
-  Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind, view: p.method === 'threshold' ? null : mask });
-}
-function stage3OneLine(p) {
-  const { W, H, s } = cache, stats = {};
-  const field = pathField(cache.one, W, H, Math.max(p.lineWidth, p.minWidth) / s);
-  let mask = fieldToMask(field);
-  if (p.kind === 'cutout' && p.bar) { addBottomBar(mask, W, H, Math.round(4 / s)); for (let i = 0; i < mask.length; i++) if (mask[i]) field[i] = Math.max(field[i], 1); }
-  const rMin = Math.max(1, Math.floor(p.minWidth / (2 * s))), bridgeR = Math.max(rMin + 1, Math.round(0.45 / s));
-  const fixed = p.kind === 'plaque' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, 'connect', stats);
-  for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
-  const pieces = label(opening(fixed, W, H, rMin), W, H).n;
-  Object.assign(cache, { field, mask: fixed, pieces, rMin, stats, kind: p.kind, view: fixed });
+  Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind });
 }
 let built = null;
 async function stage4(p) {
   await Promise.all([initManifold(), fontsReady]);
   collectGarbage();
   const { field, W, H, s } = cache;
-  const art = fieldToCrossSection(field, W, H, s);
-  if (!art) { built = null; view.show([]); setWarnings(['没有识别到线条。试试调整灵敏度或勾选反相。']); updateStatus(p); return; }
-  built = buildModels(art, p, fonts);
+  if (p.kind === 'litho') {
+    const L = buildLithoPanel(cache.gray, W, H, p, W * s);
+    cache.litho = L; cache.kind = 'litho';
+    built = buildModels(null, p, fonts, L.panel);
+  } else {
+    const art = fieldToCrossSection(field, W, H, s);
+    if (!art) { built = null; view.show([]); setWarnings(['没有识别到线条。试试调整灵敏度或勾选反相。']); updateStatus(p); return; }
+    built = buildModels(art, p, fonts);
+  }
   built.meshes = built.parts.map(pt => ({ ...pt, arrays: meshArrays(pt.manifold) }));
   const show = [];
   for (const pt of built.parts) {
@@ -381,6 +371,14 @@ function updateStatus(p) {
   const add = (html) => { const s = document.createElement('span'); s.innerHTML = html; st.appendChild(s); };
   const { W, H, s, pieces, stats } = cache;
   add(`图案 <b>${(W * s).toFixed(0)} × ${(H * s).toFixed(0)} mm</b>`);
+  if (p.kind === 'litho' && cache.litho) {
+    const t = cache.litho.tri;
+    add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
+    add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
+    if (p.bulge > 0) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
+    if (built) add(`模型 <b>${built.dims.map(v => v.toFixed(0)).join(' × ')} mm</b>`);
+    return;
+  }
   if (cache.kind === 'plaque') add('<span class="pill ok">线条都在底板上</span>');
   else add(pieces === 1 ? '<span class="pill ok">线条连成一整块</span>' : `<span class="pill warn">${pieces} 块分离</span>`);
   add(`最细处 ≥ <b>${((2 * cache.rMin + 1) * s).toFixed(1)} mm</b>`);
@@ -458,7 +456,8 @@ const view = (() => {
 })();
 function drawLegend() {
   const lg = $('legend'); lg.innerHTML = '';
-  if (tab === 'line') { lg.hidden = false; lg.innerHTML = `<span><i style="background:var(--stroke)"></i>线条</span><span><i style="background:var(--added)"></i>加粗/补接</span><span><i style="background:var(--removed)"></i>去掉</span>`; }
+  if (tab === 'line' && P().kind === 'litho') { lg.hidden = false; lg.innerHTML = '<span>模拟背后打光时看到的样子</span>'; }
+  else if (tab === 'line') { lg.hidden = false; lg.innerHTML = `<span><i style="background:var(--stroke)"></i>线条</span><span><i style="background:var(--added)"></i>加粗/补接</span><span><i style="background:var(--removed)"></i>去掉</span>`; }
   else if (tab === '3d' && P().base !== 'none') { lg.hidden = false; lg.innerHTML = `<span><i style="background:#efe9de;border:1px solid var(--line)"></i>图案</span><span><i style="background:#48524d"></i>底座</span>`; }
   else lg.hidden = true;
 }
@@ -473,6 +472,7 @@ async function save(filename, data) {
   toast('已下载：' + filename); return true;
 }
 function lineartPNG() {
+  if (P().kind === 'litho' && cache.litho) return new Promise(r => lithoPreview(cache.litho.tri, P()).toBlob(r, 'image/png'));
   return new Promise(r => {
     const { W, H, mask } = cache, c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d'), img = x.createImageData(W, H);
@@ -485,11 +485,13 @@ function notes(p) {
   L.push('线稿立体工坊 · 打印说明', '');
   for (const m of built.meshes) L.push(`${m.file}  —  ${m.name}，${dimsOf(m.manifold).map(v => v.toFixed(1)).join(' × ')} mm`);
   L.push('');
-  if (p.base === 'separate') L.push(`图案平放打印；底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
+  if (p.base === 'separate') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
   if (p.base === 'onepiece') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');
   if (p.base === 'none') L.push('平放打印，不需要支撑。');
   if (p.kind === 'plaque') L.push(`浮雕牌：打到 ${p.plateT} mm 高度时换色，底板和线条就是两种颜色。`);
-  L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(1)} mm，用 0.4 mm 喷嘴可以打印。`);
+  if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
+  if (p.kind === 'litho' && p.bulge > 0) L.push(`曲面透光：背面跟着正面一起鼓起 ${p.bulge} mm，厚度处处不变。推荐竖着打印（底边朝下，不需要支撑）；平放打印时背面朝下需要少量支撑。`);
+  else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(1)} mm，用 0.4 mm 喷嘴可以打印。`);
   if (p.text1 || p.text2) L.push('刻字较小，建议层高 0.1–0.12 mm。');
   return L.join('\r\n');
 }
@@ -497,13 +499,13 @@ $('dlZip').addEventListener('click', async () => {
   if (!built) return; const p = P();
   const files = built.meshes.map(m => ({ name: m.file, data: stlBinary(m.manifold) }));
   const enc = new TextEncoder();
-  files.push({ name: 'lineart.png', data: new Uint8Array(await (await lineartPNG()).arrayBuffer()) });
+  files.push({ name: p.kind === 'litho' ? 'backlit-preview.png' : 'lineart.png', data: new Uint8Array(await (await lineartPNG()).arrayBuffer()) });
   if (view.ok()) { const was = tab; if (tab !== '3d') showTab('3d'); await frame(); files.push({ name: 'preview.png', data: new Uint8Array(await (await view.snapshot()).arrayBuffer()) }); if (was !== '3d') showTab(was); }
   files.push({ name: 'print-notes.txt', data: enc.encode('﻿' + notes(p)) });
   await save('lineart-3d-model.zip', makeZip(files));
 });
 $('dlShot').addEventListener('click', async () => { if (!view.ok() || !built) return; const was = tab; if (tab !== '3d') showTab('3d'); await frame(); const b = await view.snapshot(); if (was !== '3d') showTab(was); await save('preview.png', b); });
-$('dlLine').addEventListener('click', async () => { if (!cache.mask) return; await save('lineart.png', await lineartPNG()); });
+$('dlLine').addEventListener('click', async () => { const li = P().kind === 'litho'; if (li ? !cache.litho : !cache.mask) return; await save(li ? 'backlit-preview.png' : 'lineart.png', await lineartPNG()); });
 
 // ---------- boot ----------
 window.addEventListener('resize', () => { if (tab === 'src') drawSrc(); if (tab === 'line') drawLine(); });

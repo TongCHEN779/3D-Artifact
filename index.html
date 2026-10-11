@@ -15,7 +15,7 @@
 <div class="wrap">
   <header class="top">
     <h1>线稿立体工坊</h1>
-    <p>上传一张线稿或照片，转成黑白线条，再生成可以直接 3D 打印的剪影或浮雕模型。全部在浏览器里完成，图片不会上传。</p>
+    <p>上传一张线稿或照片，生成可以直接 3D 打印的镂空剪影、浮雕牌，或者背后打光就能看到照片的透光浮雕。全部在浏览器里完成，图片不会上传。</p>
   </header>
 
   <div class="grid">
@@ -33,21 +33,17 @@
 
       <section class="step" aria-labelledby="s2">
         <h2 id="s2"><span class="n">2</span>黑白线稿</h2>
-        <div class="row two"><label>线稿方法</label>
-          <div class="seg" data-name="method"><button type="button" data-v="threshold" aria-pressed="true">黑白阈值</button><button type="button" data-v="ai">AI 线稿</button><button type="button" data-v="sketch">AI 速写</button><button type="button" data-v="oneline">一笔画</button></div></div>
-        <p class="hint" id="methodHint"></p>
-        <div class="row" data-m="ai sketch oneline"><label for="detail">细节</label><input type="range" id="detail" min="0" max="100" step="5" value="35"><output for="detail"></output></div>
-        <label class="check" data-m="ai sketch oneline"><input type="checkbox" id="outline" checked>描出主体外轮廓（自动抠图）</label>
-        <label class="check" data-m="ai sketch oneline"><input type="checkbox" id="faceBoost" checked>人像：加强眼睛和嘴</label>
-        <div class="row two" data-m="threshold"><label>阈值方式</label>
+        <p class="hint" id="s2note" hidden>透光浮雕直接用照片的明暗来决定厚度，不需要转成线稿。在「原图」里框选要用的部分即可。</p>
+        <div id="s2body" class="stack">
+        <div class="row two"><label>阈值方式</label>
           <div class="seg" data-name="thMode"><button type="button" data-v="auto" aria-pressed="true">自动</button><button type="button" data-v="manual">手动</button><button type="button" data-v="adaptive">照片</button></div></div>
-        <div class="row" id="rowTh" data-m="threshold"><label for="threshold">灵敏度</label><input type="range" id="threshold" min="20" max="250" value="190"><output for="threshold"></output></div>
-        <div class="row" id="rowC" data-m="threshold" hidden><label for="adaptC">细节</label><input type="range" id="adaptC" min="2" max="40" value="10"><output for="adaptC"></output></div>
-        <label class="check" data-m="threshold"><input type="checkbox" id="invert">反相（浅色线条、深色背景时勾选）</label>
-        <div class="row" data-m="threshold"><label for="speck">去除碎点</label><input type="range" id="speck" min="0" max="4" step="0.1" value="0.4"><output for="speck"></output></div>
+        <div class="row" id="rowTh"><label for="threshold">灵敏度</label><input type="range" id="threshold" min="20" max="250" value="190"><output for="threshold"></output></div>
+        <div class="row" id="rowC" hidden><label for="adaptC">细节</label><input type="range" id="adaptC" min="2" max="40" value="10"><output for="adaptC"></output></div>
+        <label class="check"><input type="checkbox" id="invert">反相（浅色线条、深色背景时勾选）</label>
+        <div class="row"><label for="speck">去除碎点</label><input type="range" id="speck" min="0" max="4" step="0.1" value="0.4"><output for="speck"></output></div>
         <div class="row two"><label>孤立线条</label>
           <div class="seg" data-name="islands"><button type="button" data-v="connect" aria-pressed="true">接到旁边</button><button type="button" data-v="remove">删除</button></div></div>
-        <label class="check" data-m="threshold ai sketch"><input type="checkbox" id="smooth" checked>平滑线条、统一粗细</label>
+        <label class="check"><input type="checkbox" id="smooth" checked>平滑线条、统一粗细</label>
         <div class="row" id="rowLW"><label for="lineWidth">线宽</label><input type="range" id="lineWidth" min="0.6" max="2.5" step="0.05" value="0.9"><output for="lineWidth"></output></div>
         <div class="row" id="rowSm"><label for="smoothness">平滑程度</label><input type="range" id="smoothness" min="0.1" max="1.5" step="0.05" value="0.6"><output for="smoothness"></output></div>
         <div class="row"><label for="minWidth">最细线宽</label><input type="range" id="minWidth" min="0.4" max="1.5" step="0.05" value="0.7"><output for="minWidth"></output></div>
@@ -56,16 +52,26 @@
         <div class="row" id="rowBrush" hidden><label for="brushSize">笔刷大小</label><input type="range" id="brushSize" min="0.5" max="8" step="0.5" value="2"><output for="brushSize"></output></div>
         <div class="btns" id="brushBtns" hidden><button class="btn" type="button" id="undoBrush">撤销一笔</button><button class="btn" type="button" id="clearBrush">清除全部修改</button></div>
         <p class="hint" id="brushHint" hidden>在「线稿」里涂抹：擦掉多余的字、杂点，或补上断开的线。</p>
+      </div>
       </section>
 
       <section class="step" aria-labelledby="s3">
         <h2 id="s3"><span class="n">3</span>模型</h2>
         <div class="row two"><label>类型</label>
-          <div class="seg" data-name="kind"><button type="button" data-v="cutout" aria-pressed="true">镂空剪影</button><button type="button" data-v="plaque">浮雕牌</button></div></div>
+          <div class="seg" data-name="kind"><button type="button" data-v="cutout" aria-pressed="true">镂空剪影</button><button type="button" data-v="plaque">浮雕牌</button><button type="button" data-v="litho">透光浮雕</button></div></div>
         <div class="row"><label for="width">图案宽度</label><input type="range" id="width" min="40" max="250" step="5" value="120"><output for="width"></output></div>
         <div class="row" data-for="cutout"><label for="thick">剪影厚度</label><input type="range" id="thick" min="1.5" max="8" step="0.5" value="3"><output for="thick"></output></div>
         <label class="check" data-for="cutout"><input type="checkbox" id="bar" checked>底部加连接横条</label>
         <div class="row" data-for="plaque" hidden><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
+        <div class="row" data-for="litho" hidden><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="26"><output for="facets"></output></div>
+        <div class="row" data-for="litho" hidden><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
+        <div class="row" data-for="litho" hidden><label for="tMax">最厚（暗处）</label><input type="range" id="tMax" min="1.6" max="6" step="0.1" value="3.2"><output for="tMax"></output></div>
+        <div class="row" data-for="litho" hidden><label for="gamma">对比度</label><input type="range" id="gamma" min="0.5" max="2" step="0.05" value="1"><output for="gamma"></output></div>
+        <div class="row" data-for="litho" hidden><label for="frame">边框宽度</label><input type="range" id="frame" min="0" max="10" step="0.5" value="3"><output for="frame"></output></div>
+        <div class="row" data-for="litho" hidden><label for="bulge">明暗起伏</label><input type="range" id="bulge" min="0" max="20" step="0.5" value="6"><output for="bulge"></output></div>
+        <p class="hint" data-for="litho" hidden>起伏不改变厚度，只让整块板按明暗弯曲：亮处（通常是脸）向前鼓出，正面看更立体，背光效果不变。0 为平板；边框和插进底座的底边保持平直。</p>
+        <p class="hint" data-for="litho" hidden id="facetHint"></p>
+        <p class="hint" data-for="litho" hidden>越暗的地方越厚。用白色或浅色耗材、100% 填充打印，背后打光看。</p>
         <div class="row" data-for="plaque" hidden><label for="reliefH">线条凸起</label><input type="range" id="reliefH" min="0.6" max="4" step="0.2" value="1.6"><output for="reliefH"></output></div>
         <div class="row two"><label>底座</label>
           <div class="seg" data-name="base"><button type="button" data-v="none">不要</button><button type="button" data-v="onepiece">一体打印</button><button type="button" data-v="separate" aria-pressed="true">分开打印</button></div></div>
@@ -133,7 +139,7 @@
 <script src="js/raster.js"></script>
 <script src="js/lineart.js"></script>
 <script src="js/models.js"></script>
-<script src="js/ai.js"></script>
+<script src="js/litho.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

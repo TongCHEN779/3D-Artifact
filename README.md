@@ -2,7 +2,7 @@
 
 **Turn a line drawing or photo into a 3D-printable model — right in your browser.**
 
-Upload an image, and the app converts it to clean black-and-white line art, fixes lines that are too thin or floating, and builds a print-ready model: a free-standing cut-out silhouette or a relief plaque, with an optional stand (one-piece or slot-fit) and text engraved on the base. Everything runs locally in the browser; your images never leave your computer.
+Upload an image and choose what to print: a free-standing cut-out silhouette or a relief plaque made from clean black-and-white line art, or a faceted lithophane that shows the photo when lit from behind. Add an optional stand (one-piece or slot-fit) with text engraved on the base. Everything runs locally in the browser; your images never leave your computer.
 
 **Live demo:** https://tongchen779.github.io/3D-Artifact/
 
@@ -10,18 +10,16 @@ Upload an image, and the app converts it to clean black-and-white line art, fixe
 
 ## Features
 
-- **Four ways to get line art**:
-  - *Threshold*: for drawings and illustrations (automatic, manual or adaptive), with crop, invert, speck removal and an erase/draw brush.
-  - *AI line art*: PiDiNet edge detection finds object boundaries, not shading or texture.
-  - *AI sketch*: the Informative Drawings generator turns a photo into a hand-drawn sketch, then into printable strokes. Best for portraits.
-  - *One-line drawing*: the whole picture as a single continuous stroke. Islands are joined with short curved connectors that avoid the face, and a Chinese-postman route lets the pen re-trace existing lines instead of jumping, so the print is one piece by construction.
-  - AI modes can add a clean subject outline (U²-Netp) and extra detail around the eyes and mouth (YuNet face landmarks). All models run in the browser with onnxruntime-web; the first use downloads about 30 MB.
+- **Line art from drawings and illustrations**: automatic, manual or adaptive threshold, crop, invert, speck removal, and an erase/draw brush for touch-ups.
 - **Printable lines**: thin strokes are thickened to a minimum width, and floating pieces are bridged to their nearest neighbour (or removed).
 - **Smooth, even strokes**: optionally re-draws every line along its centre with a uniform width, while large filled areas stay solid.
-- **Two model types**: cut-out silhouette or relief plaque (two-colour ready: change filament at the plate height).
+- **Three model types**:
+  - *Cut-out silhouette*: the line art as a single connected piece.
+  - *Relief plaque*: raised lines on a plate (two-colour ready: change filament at the plate height).
+  - *Faceted lithophane*: thickness follows darkness, so the photo appears when back-lit. The surface is an error-driven adaptive triangulation — vertices are added where flat facets deviate most from the photo, so facets are small around eyes, mouth and outlines and large in smooth areas. An optional *brightness bulge* curves the whole panel so bright areas (usually the face) come forward, while the thickness — and so the back-lit image — stays the same. Facet count, thickness range, contrast, bulge and frame are adjustable, and a back-lit preview shows the result before printing.
 - **Stand**: none, one-piece, or a separate base with a slot (adjustable depth, height, overhang, insert depth and clearance).
 - **Engraving**: text on the front and back of the base, in handwriting, serif or sans fonts, or upload your own `.ttf`/`.otf` (e.g. for Chinese text).
-- **Export**: watertight binary STL files, the line art PNG, a rendered preview and print notes, individually or as one ZIP.
+- **Export**: watertight binary STL files, the line art or back-lit preview, a rendered 3D preview and print notes, individually or as one ZIP.
 
 ## Use it locally
 
@@ -43,14 +41,13 @@ index.html            page markup
 css/style.css         styles (light and dark theme)
 js/raster.js          distance transform, morphology, labelling, thinning
 js/lineart.js         binarise → clean → connect → smooth pipeline
-js/models.js          contours → Manifold geometry, text, STL and ZIP export
+js/models.js          contours → Manifold geometry, stand, text, STL and ZIP export
+js/litho.js           faceted lithophane: adaptive triangulation, solid mesh, back-lit preview
 js/app.js             UI, pipeline orchestration, 3D viewer
-js/ai.js              in-browser models, AI line art, one-line route planning
-models/               ONNX models (sources and licences in models/README.md)
-vendor/               three.js r128, d3 7.8.5, opentype.js 1.3.4, manifold-3d 3.5.1, onnxruntime-web 1.27.0
+vendor/               three.js r128, d3 7.8.5, opentype.js 1.3.4, manifold-3d 3.5.1
 fonts/                Dancing Script Bold, DejaVu Serif Bold, Inter SemiBold (Latin subsets)
 ```
 
 ## Credits and licences
 
-The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences, included next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT) and [onnxruntime-web](https://onnxruntime.ai) (MIT). Model sources and licences are listed in `models/README.md`. Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).
+The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences, included next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT). Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).

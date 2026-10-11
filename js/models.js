@@ -48,16 +48,17 @@ function rect(x0, y0, x1, y1) { return G(new MF.CrossSection([[[x0, y0], [x1, y0
 function box(cx, cy, z0, sx, sy, sz) { return G(G(MF.Manifold.cube([sx, sy, sz], false)).translate([cx - sx / 2, cy - sy / 2, z0])); }
 
 // Build everything. Returns {parts:[{name,file,manifold,role}], warnings, dims}
-function buildModels(art, p, fonts) {
+function buildModels(art, p, fonts, litho) {
   const { Manifold } = MF;
   const warnings = [];
-  const bb = art.bounds();
-  const aw = bb.max[0] - bb.min[0], ah = bb.max[1] - bb.min[1];
   const font = fonts[p.font];
   const standing = p.base !== 'none';
   let panel, panelT;
 
-  if (p.kind === 'plaque') {
+  if (p.kind === 'litho') {
+    panel = litho; panelT = Math.max(p.tMax, 0.1);
+  } else if (p.kind === 'plaque') {
+    const bb = art.bounds();
     const M = 6;
     let bottomExtra = 0, plaqueText = null;
     if (!standing && p.text1) {
@@ -80,7 +81,7 @@ function buildModels(art, p, fonts) {
   }
 
   if (!standing) {
-    return { parts: [{ name: p.kind === 'plaque' ? '浮雕牌' : '镂空剪影', file: p.kind === 'plaque' ? 'relief_plaque.stl' : 'cutout.stl', manifold: panel, role: 'panel', flat: true }], warnings, dims: dimsOf(panel) };
+    return { parts: [{ name: PANEL_NAME[p.kind], file: PANEL_FILE[p.kind], manifold: panel, role: 'panel', flat: true }], warnings, dims: dimsOf(panel) };
   }
 
   // ---- standing on a long base ----
@@ -106,7 +107,8 @@ function buildModels(art, p, fonts) {
 
   const up = G(panel.rotate([90, 0, 0]));
   const ub = up.boundingBox();
-  const placed = G(up.translate([-(ub.min[0] + ub.max[0]) / 2, -(ub.min[1] + ub.max[1]) / 2, BT - insert - ub.min[2]]));
+  // centre the flat 0..panelT slab (not the bounding box) over the slot, so a curved lithophane's bulge doesn't shift it
+  const placed = G(up.translate([-(ub.min[0] + ub.max[0]) / 2, panelT / 2, BT - insert - ub.min[2]]));
 
   if (p.base === 'onepiece') {
     const one = G(Manifold.union(base, placed));
@@ -118,13 +120,15 @@ function buildModels(art, p, fonts) {
   const all = G(Manifold.union(slotted, placed));
   return {
     parts: [
-      { name: p.kind === 'plaque' ? '浮雕牌（平放打印）' : '剪影（平放打印）', file: p.kind === 'plaque' ? 'relief_plaque.stl' : 'cutout.stl', manifold: panel, role: 'panel', flat: true, viewM: placed },
+      { name: PANEL_NAME[p.kind] + (p.kind === 'litho' ? '' : '（平放打印）'), file: PANEL_FILE[p.kind], manifold: panel, role: 'panel', flat: true, viewM: placed },
       { name: '卡槽底座', file: 'base_with_slot.stl', manifold: slotted, role: 'base' },
     ],
     warnings, dims: dimsOf(all),
     slot: { w: pw + 2 * c, t: panelT + 2 * c, depth: sd },
   };
 }
+const PANEL_NAME = { cutout: '镂空剪影', plaque: '浮雕牌', litho: '透光浮雕' };
+const PANEL_FILE = { cutout: 'cutout.stl', plaque: 'relief_plaque.stl', litho: 'lithophane.stl' };
 function dimsOf(m) { const b = m.boundingBox(); return [0, 1, 2].map(i => b.max[i] - b.min[i]); }
 
 function meshArrays(m) {
