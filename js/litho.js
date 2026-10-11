@@ -81,11 +81,14 @@ function adaptiveTriangulation(Z, w, h, nTarget, tol, D) {
 
 // closed solid: top facets at D + thickness, back at D (flat z = 0 when there is no bulge), side walls along the hull
 function lithoManifold(tri, widthMM) {
-  const { pts, tris, hull, Z, D, w, h } = tri, n = pts.length / 2, sc = widthMM / (w - 1);
-  const V = new Float32Array(n * 6 + (D ? 0 : 3));
+  // flip: front = K - T, back = K - 2T with K = 2·tMax. The thickness is still T everywhere (same back-lit
+  // image), but the front relief is inverted: bright areas (the face) stand out, dark areas (hair) recede.
+  const { pts, tris, hull, Z, D, w, h, flip, K } = tri, n = pts.length / 2, sc = widthMM / (w - 1), curved = !!(D || flip);
+  const V = new Float32Array(n * 6 + (curved ? 0 : 3));
   for (let i = 0; i < n; i++) {
     const j = pts[2 * i + 1] * w + pts[2 * i], x = pts[2 * i] * sc, y = (h - 1 - pts[2 * i + 1]) * sc, d = D ? D[j] : 0;
-    V.set([x, y, d + Z[j]], 3 * i); V.set([x, y, d], 3 * (n + i));
+    const top = flip ? K - Z[j] : Z[j], back = flip ? K - 2 * Z[j] : 0;
+    V.set([x, y, d + top], 3 * i); V.set([x, y, d + back], 3 * (n + i));
   }
   const F = [];
   for (let t = 0; t < tris.length; t += 3) {
@@ -94,29 +97,32 @@ function lithoManifold(tri, widthMM) {
     if (Math.abs(cr) < 1e-12) continue;
     if (cr < 0) [b, c] = [c, b];
     F.push(a, b, c);
-    if (D) F.push(n + a, n + c, n + b);              // curved back: same triangles, reversed
+    if (curved) F.push(n + a, n + c, n + b);         // curved back: same triangles, reversed
   }
-  const ctr = 2 * n; if (!D) V.set([(w - 1) * sc / 2, (h - 1) * sc / 2, 0], 3 * ctr);
+  const ctr = 2 * n; if (!curved) V.set([(w - 1) * sc / 2, (h - 1) * sc / 2, 0], 3 * ctr);
   let area = 0; for (let i = 0; i < hull.length; i++) { const a = hull[i], b = hull[(i + 1) % hull.length]; area += V[3 * a] * V[3 * b + 1] - V[3 * b] * V[3 * a + 1]; }
   for (let i = 0; i < hull.length; i++) {
     let a = hull[i], b = hull[(i + 1) % hull.length]; if (area < 0) [a, b] = [b, a];
     F.push(n + a, n + b, b, n + a, b, a);
-    if (!D) F.push(ctr, n + b, n + a);               // flat back
+    if (!curved) F.push(ctr, n + b, n + a);               // flat back
   }
   const mesh = G(new MF.Mesh({ numProp: 3, vertProperties: V, triVerts: Uint32Array.from(F) }));
   mesh.merge();
   return G(new MF.Manifold(mesh));
 }
 
+// thickness of the flat slab the panel occupies (frame, edge in the stand)
+function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }
+
 function buildLithoPanel(gray, W, H, p, widthMM) {
   const L = lithoThickness(gray, W, H, p);
   const D = lithoBulge(gray, W, H, L, p, widthMM);
-  const tri = adaptiveTriangulation(L.Z, L.w, L.h, p.facets, 0.004, D); tri.widthMM = widthMM;
+  const tri = adaptiveTriangulation(L.Z, L.w, L.h, p.facets, 0.004, D); tri.widthMM = widthMM; tri.flip = !!p.flip; tri.K = 2 * p.tMax;
   let m = lithoManifold(tri, widthMM);
   const hmm = (L.h - 1) * widthMM / (L.w - 1);
   if (p.frame > 0) {
     const f = Math.min(p.frame, widthMM / 4, hmm / 4);
-    const ring = G(G(rect(0, 0, widthMM, hmm).subtract(rect(f, f, widthMM - f, hmm - f))).extrude(p.tMax));
+    const ring = G(G(rect(0, 0, widthMM, hmm).subtract(rect(f, f, widthMM - f, hmm - f))).extrude(lithoDepth(p)));
     m = G(MF.Manifold.union(m, ring));
   }
   return { panel: m, tri, hmm };

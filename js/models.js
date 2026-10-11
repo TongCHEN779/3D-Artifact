@@ -56,7 +56,7 @@ function buildModels(art, p, fonts, litho) {
   let panel, panelT;
 
   if (p.kind === 'litho') {
-    panel = litho; panelT = Math.max(p.tMax, 0.1);
+    panel = litho; panelT = Math.max(lithoDepth(p), 0.1);
   } else if (p.kind === 'plaque') {
     const bb = art.bounds();
     const M = 6;
