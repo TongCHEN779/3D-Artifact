@@ -6,9 +6,11 @@
 function lithoThickness(gray, W, H, p) {
   // analysis grid: about 6 px per vertex spacing, between 600 px and the image's own resolution
   // smooth surface: about 0.15 mm per analysis pixel and a slightly softer image, so the mesh can follow gentle shading
-  const lim = p.smooth ? Math.max(600, Math.min(1600, Math.round(p.widthMM / 0.15))) : Math.max(600, Math.round(Math.sqrt(p.facets) * 6));
+  // smooth detail d∈[0,1]: analysis pixel 0.2 → 0.06 mm, softening 1.2 → 0.5 px
+  const d = p.smoothDetail;
+  const lim = p.smooth ? Math.max(600, Math.min(3000, Math.round(p.widthMM / (0.2 * Math.pow(0.3, d))))) : Math.max(600, Math.round(Math.sqrt(p.facets) * 6));
   const k = Math.min(1, lim / Math.max(W, H)), w = Math.max(16, Math.round(W * k)), h = Math.max(16, Math.round(H * k));
-  const g = gaussBlur(gray, W, H, (p.smooth ? 1.2 : 0.6) / k), Z = new Float32Array(w * h);
+  const g = gaussBlur(gray, W, H, (p.smooth ? 1.2 - 0.7 * d : 0.6) / k), Z = new Float32Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = g[Math.min(H - 1, Math.round((y + 0.5) / k - 0.5)) * W + Math.min(W - 1, Math.round((x + 0.5) / k - 0.5))];
     const dark = Math.min(1, Math.max(0, 1 - v / 255));
@@ -113,6 +115,9 @@ function lithoManifold(tri, widthMM) {
   return G(new MF.Manifold(mesh));
 }
 
+// smooth surface tolerance: 0.04 mm (detail 0) → 0.004 mm (detail 1)
+function smoothTol(p) { return 0.04 * Math.pow(0.1, p.smoothDetail); }
+
 // thickness of the flat slab the panel occupies (frame, edge in the stand)
 function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }
 
@@ -121,7 +126,7 @@ function buildLithoPanel(gray, W, H, p, widthMM) {
   const L = lithoThickness(gray, W, H, p);
   const D = lithoBulge(gray, W, H, L, p, widthMM);
   // faceted: a fixed vertex budget; smooth: keep refining until every point is within 0.02 mm of the target
-  const tri = p.smooth ? adaptiveTriangulation(L.Z, L.w, L.h, 400000, 0.02, D) : adaptiveTriangulation(L.Z, L.w, L.h, p.facets, 0.004, D); tri.widthMM = widthMM; tri.flip = !!p.flip; tri.K = 2 * p.tMax;
+  const tri = p.smooth ? adaptiveTriangulation(L.Z, L.w, L.h, 1500000, smoothTol(p), D) : adaptiveTriangulation(L.Z, L.w, L.h, p.facets, 0.004, D); tri.widthMM = widthMM; tri.flip = !!p.flip; tri.K = 2 * p.tMax;
   let m = lithoManifold(tri, widthMM);
   const hmm = (L.h - 1) * widthMM / (L.w - 1);
   if (p.frame > 0) {
