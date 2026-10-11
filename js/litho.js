@@ -7,7 +7,7 @@ function lithoThickness(gray, W, H, p) {
   // analysis grid: about 6 px per vertex spacing, between 600 px and the image's own resolution
   // smooth surface: about 0.15 mm per analysis pixel and a slightly softer image, so the mesh can follow gentle shading
   // smooth detail d∈[0,1]: analysis pixel 0.2 → 0.06 mm, softening 1.2 → 0.5 px
-  const d = p.smoothDetail;
+  const d = Number.isFinite(p.smoothDetail) ? p.smoothDetail : 0.45;
   const lim = p.smooth ? Math.max(600, Math.min(3000, Math.round(p.widthMM / (0.2 * Math.pow(0.3, d))))) : Math.max(600, Math.round(Math.sqrt(p.facets) * 6));
   const k = Math.min(1, lim / Math.max(W, H)), w = Math.max(16, Math.round(W * k)), h = Math.max(16, Math.round(H * k));
   const g = gaussBlur(gray, W, H, (p.smooth ? 1.2 - 0.7 * d : 0.6) / k), Z = new Float32Array(w * h);
@@ -120,7 +120,7 @@ function lithoManifold(tri, widthMM) {
 function countOpen(he) { let k = 0; for (let i = 0; i < he.length; i++) if (he[i] === -1) k++; return k; }
 
 // smooth surface tolerance: 0.04 mm (detail 0) → 0.004 mm (detail 1)
-function smoothTol(p) { return 0.04 * Math.pow(0.1, p.smoothDetail); }
+function smoothTol(p) { return 0.04 * Math.pow(0.1, Number.isFinite(p.smoothDetail) ? p.smoothDetail : 0.45); }
 
 // thickness of the flat slab the panel occupies (frame, edge in the stand)
 function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }

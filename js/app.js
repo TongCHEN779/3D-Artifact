@@ -10,15 +10,16 @@ const fmt = {
   smoothness: v => (+v).toFixed(2), minWidth: v => (+v).toFixed(2) + ' mm', brushSize: v => v + ' mm',
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
-  facets: v => facetCount(v).toLocaleString('zh-CN') + ' 点', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
+  smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
   textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
-// facet slider is logarithmic: 0 → 1 000 points, 100 → 200 000 points
-const facetCount = v => Math.round(1000 * Math.pow(200, v / 100) / 100) * 100;
+// facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
+const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
+const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n / 1000) / Math.log(2000))));
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, surface: 4,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, surface: 4, smoothDetail: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
@@ -33,10 +34,15 @@ document.querySelectorAll('.seg').forEach(el => {
   });
 });
 function setSeg(name, v) { const el = document.querySelector(`.seg[data-name="${name}"]`); el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v ? 'true' : 'false')); seg[name] = v; }
+$('facets').addEventListener('input', () => { $('facetsNum').value = facetCount(+$('facets').value); });
 document.querySelectorAll('input[type=range]').forEach(inp => {
   const out = document.querySelector(`output[for="${inp.id}"]`);
   const show = () => { if (out) out.textContent = (fmt[inp.id] || (v => v))(inp.value); };
   show(); inp.addEventListener('input', () => { show(); onChange(inp.id); });
+});
+$('facetsNum').addEventListener('change', () => {
+  const v = Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000)));
+  $('facetsNum').value = v; $('facets').value = facetSlider(v); onChange('facets');
 });
 document.querySelectorAll('input[type=checkbox], select').forEach(inp => inp.addEventListener('change', () => onChange(inp.id)));
 document.querySelectorAll('input[type=text]').forEach(inp => inp.addEventListener('input', () => onChange(inp.id)));
@@ -46,7 +52,7 @@ function P() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: facetCount(n('facets')), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, smooth: seg.surface === 'smooth',
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, smooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -62,9 +68,9 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) $('rowFacets').hidden = p.smooth;
-  if (litho && p.smooth) $('facetHint').textContent = '平滑表面：网格会一直加密，直到每一处与照片的误差都小于 0.02 mm，看不出棱角。顶点数由图片决定，文件会比多面体大。';
-  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。`; }
+  if (litho) { $('rowFacets').hidden = p.smooth; $('rowSmooth').hidden = !p.smooth; }
+  if (litho && p.smooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
+  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
   $('baseMore').hidden = p.base === 'none';

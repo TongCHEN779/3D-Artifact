@@ -65,7 +65,8 @@
         <div class="row" data-for="plaque" hidden><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
         <div class="row two" data-for="litho" hidden><label>表面</label>
           <div class="seg" data-name="surface"><button type="button" data-v="facet" aria-pressed="false">多面体</button><button type="button" data-v="smooth" aria-pressed="true">平滑</button></div></div>
-        <div class="row" data-for="litho" hidden id="rowFacets"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="26"><output for="facets"></output></div>
+        <div class="row" data-for="litho" hidden id="rowSmooth"><label for="smoothDetail">平滑精度</label><input type="range" id="smoothDetail" min="0" max="100" step="1" value="45"><output for="smoothDetail"></output></div>
+        <div class="row" data-for="litho" hidden id="rowFacets"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="18"><input type="number" id="facetsNum" class="num" min="500" max="3000000" step="1000" value="4000" aria-label="分面点数"></div>
         <div class="row" data-for="litho" hidden><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
         <div class="row" data-for="litho" hidden><label for="tMax">最厚（暗处）</label><input type="range" id="tMax" min="1.6" max="6" step="0.1" value="3.2"><output for="tMax"></output></div>
         <div class="row" data-for="litho" hidden><label for="gamma">对比度</label><input type="range" id="gamma" min="0.5" max="2" step="0.05" value="1"><output for="gamma"></output></div>
