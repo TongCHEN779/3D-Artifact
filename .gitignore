@@ -1,0 +1,3 @@
+# raw model checkpoints (converted copies live in models/*.onnx)
+models/*.pth
+.DS_Store

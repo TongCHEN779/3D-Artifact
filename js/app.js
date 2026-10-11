@@ -8,12 +8,12 @@ const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0
 const fmt = {
   threshold: v => v, adaptC: v => v, speck: v => v + ' mm²', lineWidth: v => (+v).toFixed(2) + ' mm',
   smoothness: v => (+v).toFixed(2), minWidth: v => (+v).toFixed(2) + ' mm', brushSize: v => v + ' mm',
-  width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
+  detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 const stageOf = {
-  width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
+  width: 1, method: 2, detail: 2, outline: 2, faceBoost: 2, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
@@ -40,7 +40,7 @@ document.querySelectorAll('input[type=text]').forEach(inp => inp.addEventListene
 function P() {
   const n = id => +$(id).value;
   return {
-    width: n('width'), thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
+    width: n('width'), method: seg.method, detail: n('detail') / 100, outline: $('outline').checked, face: $('faceBoost').checked, thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
     kind: seg.kind, thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
@@ -50,9 +50,13 @@ function P() {
 
 function syncUI() {
   const p = P();
-  $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive';
+  document.querySelectorAll('[data-m]').forEach(el => el.hidden = !el.dataset.m.split(' ').includes(p.method));
+  if (p.method === 'threshold') { $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive'; }
+  $('methodHint').textContent = p.method === 'threshold' ? '适合本来就是线稿、插画的图。照片请试试 AI 线稿或一笔画。'
+    : ({ ai: '用边缘识别模型找出物体的边界，不受明暗和纹理影响。', sketch: '用一个学过人类线描的模型，把照片画成手绘速写，再整理成可打印的线条。最适合人像。', oneline: '整幅画用一条不间断的线画完，打印出来天然是一整块。' }[p.method])
+      + (AI.ort ? '' : (p.method === 'sketch' ? ' 第一次使用会下载约 30 MB 的模型' : ' 第一次使用会下载约 20 MB 的模型') + '，之后都在你的设备上运行。');
   $('threshold').disabled = p.thMode === 'auto';
-  $('rowLW').hidden = $('rowSm').hidden = !p.smooth;
+  $('rowLW').hidden = !(p.smooth || p.method === 'oneline'); $('rowSm').hidden = !p.smooth || p.method === 'oneline';
   const br = seg.brush !== 'off';
   $('rowBrush').hidden = $('brushBtns').hidden = $('brushHint').hidden = !br;
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
@@ -128,7 +132,7 @@ function makeSample() {
   return c;
 }
 function setSource(img, name) {
-  srcImg = img; crop = null; strokes = [];
+  srcImg = img; crop = null; strokes = []; srcSerial++;
   $('srcName').textContent = name;
   invalidate(1);
 }
@@ -195,7 +199,7 @@ $('srcCanvas').addEventListener('pointerup', () => {
 let lineFit = null, painting = null, hover = null;
 function drawLine() {
   const cv = $('lineCanvas'); if (cv.hidden || !cache.mask) return;
-  const { W, H, mask, bw } = cache, f = lineFit = fitCanvas(cv, W, H), x = cv.getContext('2d');
+  const { W, H, mask } = cache, bw = cache.view || cache.bw, f = lineFit = fitCanvas(cv, W, H), x = cv.getContext('2d');
   x.fillStyle = css('--bed'); x.fillRect(0, 0, cv.width, cv.height);
   const img = new ImageData(W, H), d = img.data;
   const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
@@ -249,7 +253,10 @@ async function run() {
   running = true; $('busy').hidden = false; await frame();
   const lvl = dirty; dirty = 9; const p = P();
   try {
-    if (lvl <= 2) { $('busy').textContent = '转成黑白…'; await frame();
+    if (lvl <= 2 && p.method !== 'threshold') {
+      $('busy').textContent = '准备…'; await frame();
+      stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); await stageAI(p);
+    } else if (lvl <= 2) { $('busy').textContent = '转成黑白…'; await frame();
       stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); stage2(p);
       const t = trimmedCrop(cache.bw, cache.W, cache.H, cache.ec);
       if (t) { stage1(p, t); stage2(p); } }
@@ -269,7 +276,28 @@ function stage1(p, c) {
   x.imageSmoothingQuality = 'high'; x.drawImage(srcImg, sx, sy, sw, sh, 0, 0, W, H);
   const d = x.getImageData(0, 0, W, H).data, gray = new Float32Array(W * H);
   for (let i = 0; i < W * H; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-  Object.assign(cache, { gray, W, H, s: p.width / W, ec: c });
+  Object.assign(cache, { gray, W, H, s: p.width / W, ec: c, color: cv });
+}
+let srcSerial = 0, aiCache = null;
+async function stageAI(p) {
+  const { W, H, s, ec } = cache;
+  const keyNow = [srcSerial, ec.x0, ec.y0, ec.x1, ec.y1, W, H].join('|');
+  if (!aiCache || aiCache.key !== keyNow) aiCache = { key: keyNow, A: {} };
+  const need = [p.method === 'sketch' ? 'sketch' : 'edge', 'subject', 'face'];
+  try {
+    for (const n of need) if (!(n in aiCache.A)) aiCache.A[n] = await aiPart(n, cache.color, W, H, t => { $('busy').textContent = t; });
+  } catch (err) { console.error(err); throw new Error('模型没能载入或运行（' + (err && err.message || err) + '）。可以先用「黑白阈值」。'); }
+  syncUI();
+  const A = { edge: p.method === 'sketch' ? aiCache.A.sketch : aiCache.A.edge, subject: aiCache.A.subject, face: aiCache.A.face };
+  $('busy').textContent = p.method === 'oneline' ? '规划一笔画路线…' : '整理线条…'; await frame();
+  const sk = aiStrokeSkeleton(A, W, H, s, p, strokes, ec);
+  cache.one = null;
+  if (p.method === 'oneline') {
+    cache.one = oneLinePath(sk, W, H, s, p, p.face ? A.face : null);
+    if (!cache.one) throw new Error('没有找到线条，试试把「细节」调高。');
+    cache.bw = fieldToMask(pathField(cache.one, W, H, Math.max(p.lineWidth, p.minWidth) / s));
+  } else cache.bw = dilate(sk, W, H, Math.max(1, Math.round(p.lineWidth / (2 * s))));
+  cache.face = A.face;
 }
 // trim empty margins so "图案宽度" is the width of the drawing itself
 function trimmedCrop(bw, W, H, c) {
@@ -292,6 +320,7 @@ function stage2(p) {
 function stage3(p) {
   const { W, H, s } = cache; let m = cache.bw.slice();
   const stats = {};
+  if (p.method === 'oneline' && cache.one) return stage3OneLine(p);
   if (p.kind === 'cutout' && p.bar) addBottomBar(m, W, H, Math.round(4 / s));
   const rMin = Math.max(1, Math.floor(p.minWidth / (2 * s))), bridgeR = Math.max(rMin + 1, Math.round(0.45 / s));
   // a relief plaque holds every line on its plate, so islands are fine there
@@ -299,14 +328,25 @@ function stage3(p) {
   if (islands !== 'remove') m = thickenThin(m, W, H, rMin);
   if (islands !== 'keep') m = resolveIslands(m, W, H, rMin, bridgeR, islands, stats);
   let field;
-  if (p.smooth) field = uniformLines(m, W, H, s, { lineWidth: Math.max(p.lineWidth, p.minWidth), smoothness: p.smoothness });
+  if (p.smooth) field = uniformLines(m, W, H, s, { lineWidth: Math.max(p.lineWidth, p.minWidth), smoothness: p.smoothness, noFill: p.method !== 'threshold' });
   else field = maskToField(m, W, H, 0.07 / s);
   let mask = fieldToMask(field);
   const fixed = islands === 'keep' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, islands, {});
   for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
   mask = fixed;
   const pieces = label(opening(mask, W, H, rMin), W, H).n;
-  Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind });
+  Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind, view: p.method === 'threshold' ? null : mask });
+}
+function stage3OneLine(p) {
+  const { W, H, s } = cache, stats = {};
+  const field = pathField(cache.one, W, H, Math.max(p.lineWidth, p.minWidth) / s);
+  let mask = fieldToMask(field);
+  if (p.kind === 'cutout' && p.bar) { addBottomBar(mask, W, H, Math.round(4 / s)); for (let i = 0; i < mask.length; i++) if (mask[i]) field[i] = Math.max(field[i], 1); }
+  const rMin = Math.max(1, Math.floor(p.minWidth / (2 * s))), bridgeR = Math.max(rMin + 1, Math.round(0.45 / s));
+  const fixed = p.kind === 'plaque' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, 'connect', stats);
+  for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
+  const pieces = label(opening(fixed, W, H, rMin), W, H).n;
+  Object.assign(cache, { field, mask: fixed, pieces, rMin, stats, kind: p.kind, view: fixed });
 }
 let built = null;
 async function stage4(p) {
@@ -469,5 +509,5 @@ $('dlLine').addEventListener('click', async () => { if (!cache.mask) return; awa
 window.addEventListener('resize', () => { if (tab === 'src') drawSrc(); if (tab === 'line') drawLine(); });
 syncUI(); showTab('3d');
 setSource(makeSample(), '现在显示的是示例图');
-window.__app = window.__app || {}; Object.assign(window.__app, { cache, P, get built() { return built; }, setSource, loadFile, run, invalidate, view });
+window.__app = { cache, P, get built() { return built; }, setSource, loadFile, run, invalidate, view };
 })();

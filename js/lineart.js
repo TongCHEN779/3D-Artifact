@@ -138,7 +138,7 @@ function skeletonGraph(sk, W, H) {
 }
 
 function simplifyGraph(g, spurLen) {
-  let edges = g.edges.filter(e => e.closed || !(e.a === e.b && e.pts.length <= 4));
+  let edges = g.edges.filter(e => (e.closed ? e.pts.length >= spurLen : !(e.a === e.b && e.pts.length <= spurLen)));
   const degOf = () => { const d = new Map(); for (const e of edges) if (!e.closed) { d.set(e.a, (d.get(e.a) || 0) + 1); d.set(e.b, (d.get(e.b) || 0) + 1); } return d; };
   for (let round = 0; round < 4; round++) {
     const d = degOf();
@@ -186,7 +186,7 @@ function smoothPath(xy, sigma, closed) {
 
 // Rebuild strokes as smooth, constant-width lines; keep big filled areas as smoothed fills.
 function uniformLines(m, W, H, s, p) {
-  const core0 = opening(m, W, H, Math.max(2, Math.round(1.0 / s)));
+  const core0 = p.noFill ? new Uint8Array(W * H) : opening(m, W, H, Math.max(2, Math.round(1.0 / s)));
   const core = dilate(core0, W, H, 1); for (let i = 0; i < core.length; i++) core[i] &= m[i];
   const fill = gaussBlur(core, W, H, 0.45 / s);
   const inside = erode(core, W, H, Math.round(0.45 / s));

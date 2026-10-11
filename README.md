@@ -10,7 +10,12 @@ Upload an image, and the app converts it to clean black-and-white line art, fixe
 
 ## Features
 
-- **Line art from any image**: automatic or manual threshold, an adaptive mode for photos, crop, invert, speck removal, and an erase/draw brush for touch-ups.
+- **Four ways to get line art**:
+  - *Threshold*: for drawings and illustrations (automatic, manual or adaptive), with crop, invert, speck removal and an erase/draw brush.
+  - *AI line art*: PiDiNet edge detection finds object boundaries, not shading or texture.
+  - *AI sketch*: the Informative Drawings generator turns a photo into a hand-drawn sketch, then into printable strokes. Best for portraits.
+  - *One-line drawing*: the whole picture as a single continuous stroke. Islands are joined with short curved connectors that avoid the face, and a Chinese-postman route lets the pen re-trace existing lines instead of jumping, so the print is one piece by construction.
+  - AI modes can add a clean subject outline (U²-Netp) and extra detail around the eyes and mouth (YuNet face landmarks). All models run in the browser with onnxruntime-web; the first use downloads about 30 MB.
 - **Printable lines**: thin strokes are thickened to a minimum width, and floating pieces are bridged to their nearest neighbour (or removed).
 - **Smooth, even strokes**: optionally re-draws every line along its centre with a uniform width, while large filled areas stay solid.
 - **Two model types**: cut-out silhouette or relief plaque (two-colour ready: change filament at the plate height).
@@ -40,10 +45,12 @@ js/raster.js          distance transform, morphology, labelling, thinning
 js/lineart.js         binarise → clean → connect → smooth pipeline
 js/models.js          contours → Manifold geometry, text, STL and ZIP export
 js/app.js             UI, pipeline orchestration, 3D viewer
-vendor/               three.js r128, d3 7.8.5, opentype.js 1.3.4, manifold-3d 3.5.1
+js/ai.js              in-browser models, AI line art, one-line route planning
+models/               ONNX models (sources and licences in models/README.md)
+vendor/               three.js r128, d3 7.8.5, opentype.js 1.3.4, manifold-3d 3.5.1, onnxruntime-web 1.27.0
 fonts/                Dancing Script Bold, DejaVu Serif Bold, Inter SemiBold (Latin subsets)
 ```
 
 ## Credits and licences
 
-The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences, included next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT). Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).
+The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences, included next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT) and [onnxruntime-web](https://onnxruntime.ai) (MIT). Model sources and licences are listed in `models/README.md`. Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).
