@@ -80,40 +80,44 @@ function adaptiveTriangulation(Z, w, h, nTarget, tol, D) {
     const K = Math.max(50, Math.min(Math.round(n * 0.25), nTarget - n));
     for (const t of order.slice(0, K)) { const i = bestPix[t]; if (!used[i]) { used[i] = 1; pts.push(i % w, (i / w) | 0); } }
   }
-  return { pts, tris: del.triangles, hull: del.hull, Z, D, w, h };
+  return { pts, tris: del.triangles, halfedges: del.halfedges, hull: del.hull, Z, D, w, h };
 }
 
-// closed solid: top facets at D + thickness, back at D (flat z = 0 when there is no bulge), side walls along the hull
+// closed solid: top facets at D + thickness, back at D (z = 0 when flat), side walls along the open edges
 function lithoManifold(tri, widthMM) {
   // flip: front = K - T, back = K - 2T with K = 2·tMax. The thickness is still T everywhere (same back-lit
   // image), but the front relief is inverted: bright areas (the face) stand out, dark areas (hair) recede.
-  const { pts, tris, hull, Z, D, w, h, flip, K } = tri, n = pts.length / 2, sc = widthMM / (w - 1), curved = !!(D || flip);
-  const V = new Float32Array(n * 6 + (curved ? 0 : 3));
+  const { pts, tris, halfedges, Z, D, w, h, flip, K } = tri, n = pts.length / 2, sc = widthMM / (w - 1);
+  const V = new Float32Array(n * 6);
   for (let i = 0; i < n; i++) {
     const j = pts[2 * i + 1] * w + pts[2 * i], x = pts[2 * i] * sc, y = (h - 1 - pts[2 * i + 1]) * sc, d = D ? D[j] : 0;
     const top = flip ? K - Z[j] : Z[j], back = flip ? K - 2 * Z[j] : 0;
     V.set([x, y, d + top], 3 * i); V.set([x, y, d + back], 3 * (n + i));
   }
-  const F = [];
+  // Orientation is decided on the exact integer pixel coordinates (y points down there, so the sign flips).
+  // Every triangle is kept, and the back is the same triangulation reversed, so top and back always match.
+  const F = new Uint32Array(tris.length * 2 + 6 * countOpen(halfedges)); let o = 0;
+  const flipped = new Uint8Array(tris.length / 3);
   for (let t = 0; t < tris.length; t += 3) {
     let a = tris[t], b = tris[t + 1], c = tris[t + 2];
-    const cr = (V[3 * b] - V[3 * a]) * (V[3 * c + 1] - V[3 * a + 1]) - (V[3 * b + 1] - V[3 * a + 1]) * (V[3 * c] - V[3 * a]);
-    if (Math.abs(cr) < 1e-12) continue;
-    if (cr < 0) [b, c] = [c, b];
-    F.push(a, b, c);
-    if (curved) F.push(n + a, n + c, n + b);         // curved back: same triangles, reversed
+    const crPix = (pts[2 * b] - pts[2 * a]) * (pts[2 * c + 1] - pts[2 * a + 1]) - (pts[2 * b + 1] - pts[2 * a + 1]) * (pts[2 * c] - pts[2 * a]);
+    if (crPix > 0) { [b, c] = [c, b]; flipped[t / 3] = 1; }    // want counter-clockwise in mm (y up)
+    F[o++] = a; F[o++] = b; F[o++] = c;
+    F[o++] = n + a; F[o++] = n + c; F[o++] = n + b;
   }
-  const ctr = 2 * n; if (!curved) V.set([(w - 1) * sc / 2, (h - 1) * sc / 2, 0], 3 * ctr);
-  let area = 0; for (let i = 0; i < hull.length; i++) { const a = hull[i], b = hull[(i + 1) % hull.length]; area += V[3 * a] * V[3 * b + 1] - V[3 * b] * V[3 * a + 1]; }
-  for (let i = 0; i < hull.length; i++) {
-    let a = hull[i], b = hull[(i + 1) % hull.length]; if (area < 0) [a, b] = [b, a];
-    F.push(n + a, n + b, b, n + a, b, a);
-    if (!curved) F.push(ctr, n + b, n + a);               // flat back
+  // side walls on every edge that belongs to only one triangle (taken from the triangulation itself, not the hull)
+  for (let e = 0; e < halfedges.length; e++) {
+    if (halfedges[e] !== -1) continue;
+    const t = (e / 3) | 0, e2 = e % 3 === 2 ? e - 2 : e + 1;
+    let a = tris[e], b = tris[e2]; if (flipped[t]) [a, b] = [b, a];   // a → b as it runs in the top face
+    F[o++] = b; F[o++] = a; F[o++] = n + a;
+    F[o++] = b; F[o++] = n + a; F[o++] = n + b;
   }
-  const mesh = G(new MF.Mesh({ numProp: 3, vertProperties: V, triVerts: Uint32Array.from(F) }));
-  mesh.merge();
-  return G(new MF.Manifold(mesh));
+  const mesh = G(new MF.Mesh({ numProp: 3, vertProperties: V, triVerts: F }));
+  try { return G(new MF.Manifold(mesh)); }
+  catch (e) { mesh.merge(); return G(new MF.Manifold(mesh)); }
 }
+function countOpen(he) { let k = 0; for (let i = 0; i < he.length; i++) if (he[i] === -1) k++; return k; }
 
 // smooth surface tolerance: 0.04 mm (detail 0) → 0.004 mm (detail 1)
 function smoothTol(p) { return 0.04 * Math.pow(0.1, p.smoothDetail); }
