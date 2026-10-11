@@ -80,7 +80,10 @@ function buildModels(art, p, fonts, litho) {
     panelT = p.thick;
   }
 
+  // lithophane printed on its own: optionally stand it upright with a peel-off brim and two snap-off side fins
+  const lithoPrint = p.kind === 'litho' && p.printAid ? lithoPrintAids(panel, p, warnings) : null;
   if (!standing) {
+    if (lithoPrint) return { parts: [{ name: PANEL_NAME[p.kind] + '（竖打，含支脚）', file: PANEL_FILE[p.kind], manifold: lithoPrint, role: 'panel' }], warnings, dims: dimsOf(lithoPrint) };
     return { parts: [{ name: PANEL_NAME[p.kind], file: PANEL_FILE[p.kind], manifold: panel, role: 'panel', flat: true }], warnings, dims: dimsOf(panel) };
   }
 
@@ -120,12 +123,40 @@ function buildModels(art, p, fonts, litho) {
   const all = G(Manifold.union(slotted, placed));
   return {
     parts: [
-      { name: PANEL_NAME[p.kind] + (p.kind === 'litho' ? '' : '（平放打印）'), file: PANEL_FILE[p.kind], manifold: panel, role: 'panel', flat: true, viewM: placed },
+      { name: PANEL_NAME[p.kind] + (p.kind === 'litho' ? (lithoPrint ? '（竖打，含支脚）' : '') : '（平放打印）'), file: PANEL_FILE[p.kind], manifold: lithoPrint || panel, role: 'panel', flat: true, viewM: placed },
       { name: '卡槽底座', file: 'base_with_slot.stl', manifold: slotted, role: 'base' },
     ],
     warnings, dims: dimsOf(all),
     slot: { w: pw + 2 * c, t: panelT + 2 * c, depth: sd },
   };
+}
+// Print aids for a lithophane standing on its bottom edge (the usual way to print one):
+//  · a 0.4 mm brim (two layers) under and around the bottom edge, for adhesion — peel it off after printing;
+//  · a triangular fin on each side, 0.3 mm away from the panel and joined to it by small tabs every 8 mm,
+//    so the tall thin plate can't wobble or tip over — snap the fins off after printing.
+// The result is returned standing, bottom edge on z = 0, ready for the slicer.
+function lithoPrintAids(panel, p, warnings) {
+  const { Manifold } = MF;
+  const b = panel.boundingBox(), x0 = b.min[0], x1 = b.max[0], y0 = b.min[1], Hp = b.max[1] - b.min[1], W = x1 - x0;
+  const T = lithoDepth(p), F = Math.max(12, Math.min(25, Hp * 0.18)), Hf = Math.min(Hp * 0.6, 70);
+  const gap = 0.3, ft = 1.6, brimH = 0.4, brimOut = 6;
+  const cub = (ax, ay, az, bx, by, bz) => G(G(Manifold.cube([bx - ax, by - ay, bz - az])).translate([ax, ay, az]));
+  const parts = [panel, cub(x0 - gap - ft - brimOut, y0, -F - 4, x1 + gap + ft + brimOut, y0 + brimH, T + F + 4)];
+  for (const side of [-1, 1]) {
+    const xa = side < 0 ? x0 - gap - ft : x1 + gap, xb = xa + ft, pts = [];
+    for (const x of [xa, xb]) pts.push([x, y0, -F], [x, y0, T + F], [x, y0 + Hf, 0], [x, y0 + Hf, T]);
+    parts.push(G(Manifold.hull(pts)));
+    // tabs bridge the 0.3 mm gap; they reach 0.3 mm into the panel's (flat) side edge
+    const ta = side < 0 ? xb - 0.05 : x1 - 0.3, tb = side < 0 ? x0 + 0.3 : xa + 0.05;
+    for (let y = y0 + 3; y < y0 + Hf - 2; y += 8) parts.push(cub(ta, y, 0.4, tb, y + 1, Math.max(0.8, T - 0.4)));
+  }
+  let m = G(Manifold.union(parts));
+  m = G(m.rotate([90, 0, 0]));
+  const mb = m.boundingBox();
+  m = G(m.translate([-(mb.min[0] + mb.max[0]) / 2, -(mb.min[1] + mb.max[1]) / 2, -mb.min[2]]));
+  const d = dimsOf(m), big = Math.max(d[0], d[1]);
+  if (big > 180 || d[2] > 180) warnings.push(`竖打时占用 ${d[0].toFixed(0)} × ${d[1].toFixed(0)} mm、高 ${d[2].toFixed(0)} mm，超过 180 mm 的小型打印机（如 A1 mini）放不下，可以缩小图案宽度。`);
+  return m;
 }
 const PANEL_NAME = { cutout: '镂空剪影', plaque: '浮雕牌', litho: '透光浮雕' };
 const PANEL_FILE = { cutout: 'cutout.stl', plaque: 'relief_plaque.stl', litho: 'lithophane.stl' };

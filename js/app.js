@@ -19,7 +19,7 @@ const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n /
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, surface: 4, smoothDetail: 4,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
@@ -52,7 +52,7 @@ function P() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, smooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, smooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -68,7 +68,7 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) { $('rowFacets').hidden = p.smooth; $('rowSmooth').hidden = !p.smooth; }
+  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.smooth; $('rowSmooth').hidden = !p.smooth; }
   if (litho && p.smooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
   else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
@@ -499,6 +499,7 @@ function notes(p) {
   if (p.base === 'none') L.push('平放打印，不需要支撑。');
   if (p.kind === 'plaque') L.push(`浮雕牌：打到 ${p.plateT} mm 高度时换色，底板和线条就是两种颜色。`);
   if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
+  if (p.kind === 'litho' && p.printAid && p.base !== 'onepiece') L.push(`透光浮雕 STL 已经是竖立的打印姿态：底边朝下，带 0.4 mm 裙边和两侧三角支脚（与浮雕隔 0.3 mm，每 8 mm 一个小连接点）。直接切片，不用再加支撑或 brim；打完撕掉裙边、掰掉支脚，用刀修平底边再插进底座。建议 0.12–0.16 mm 层高、100% 填充、外墙速度放慢，床温略高一点（PLA 60–65 °C）帮助粘牢。`);
   if (p.kind === 'litho' && p.flip) L.push(`正面凸起：两面都有起伏（背面是反向浮雕，朝灯摆放），请竖着打印（底边朝下），不需要支撑。`);
   if (p.kind === 'litho' && p.bulge > 0) L.push(`曲面透光：背面跟着正面一起鼓起 ${p.bulge} mm，厚度处处不变。推荐竖着打印（底边朝下，不需要支撑）；平放打印时背面朝下需要少量支撑。`);
   else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(1)} mm，用 0.4 mm 喷嘴可以打印。`);
