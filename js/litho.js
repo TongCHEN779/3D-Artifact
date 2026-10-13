@@ -277,8 +277,42 @@ function buildSteppedPanel(gray, W, H, p, widthMM) {
   return { panel: m, tri, hmm: (h - 1) * sc };
 }
 
+// Edge-preserving denoise (self-guided filter, He et al. 2010). Flat areas — a plain background, skin — have
+// 8-bit banding and sensor noise of a gray level or two; a fine mesh would trace those as tiny random facets
+// (a "frosted" look, millions of useless triangles, all far below what a printer can make). The guided filter
+// flattens variations smaller than σ (in gray levels) inside a window of radius r, but keeps real edges.
+function boxMean(a, W, H, r) {
+  const tmp = new Float32Array(W * H), out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {                       // horizontal running sum
+    let s = 0; const o = y * W;
+    for (let x = -r; x <= r; x++) s += a[o + Math.min(W - 1, Math.max(0, x))];
+    for (let x = 0; x < W; x++) { tmp[o + x] = s; s += a[o + Math.min(W - 1, x + r + 1)] - a[o + Math.max(0, x - r)]; }
+  }
+  const n = (2 * r + 1) * (2 * r + 1);
+  for (let x = 0; x < W; x++) {                       // vertical running sum
+    let s = 0;
+    for (let y = -r; y <= r; y++) s += tmp[Math.min(H - 1, Math.max(0, y)) * W + x];
+    for (let y = 0; y < H; y++) { out[y * W + x] = s / n; s += tmp[Math.min(H - 1, y + r + 1) * W + x] - tmp[Math.max(0, y - r) * W + x]; }
+  }
+  return out;
+}
+function guidedDenoise(I, W, H, r, sigma) {
+  if (!(sigma > 0) || r < 1) return I;
+  const eps = sigma * sigma, n = W * H, II = new Float32Array(n);
+  for (let i = 0; i < n; i++) II[i] = I[i] * I[i];
+  const mI = boxMean(I, W, H, r), mII = boxMean(II, W, H, r), A = new Float32Array(n), B = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = Math.max(0, mII[i] - mI[i] * mI[i]), a = v / (v + eps); A[i] = a; B[i] = mI[i] - a * mI[i]; }
+  const mA = boxMean(A, W, H, r), mB = boxMean(B, W, H, r), q = new Float32Array(n);
+  for (let i = 0; i < n; i++) q[i] = mA[i] * I[i] + mB[i];
+  return q;
+}
+
 function buildLithoPanel(gray, W, H, p, widthMM) {
   p = Object.assign({}, p, { widthMM });
+  if (p.denoise > 0) {   // σ up to 8 gray levels, window about 0.6 mm
+    const r = Math.max(2, Math.min(20, Math.round(0.6 / (widthMM / W))));
+    gray = guidedDenoise(Float32Array.from(gray), W, H, r, 8 * p.denoise / 100);
+  }
   if (p.lithoStep) return buildSteppedPanel(gray, W, H, p, widthMM);
   const L = lithoThickness(gray, W, H, p);
   const D = lithoBulge(gray, W, H, L, p, widthMM);

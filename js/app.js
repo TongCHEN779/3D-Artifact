@@ -11,15 +11,15 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  layer: v => (+v).toFixed(2) + ' mm', gridMM: v => (+v).toFixed(2) + ' mm', levels: v => v + ' 级', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
+  layer: v => (+v).toFixed(2) + ' mm', edgeSmooth: v => +v ? (+v).toFixed(2) + ' mm' : '不平滑', gridMM: v => (+v).toFixed(2) + ' mm', levels: v => v + ' 级', denoise: v => +v ? v + '%' : '关', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 // facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
 const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
 const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n / 1000) / Math.log(2000))));
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
-  islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4, levels: 4,
+  islands: 3, lineMode: 2, edgeSmooth: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4, levels: 4, denoise: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
@@ -87,8 +87,8 @@ function rawP() {
   const n = id => +$(id).value;
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
-    islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), smoothDetail: n('smoothDetail') / 100,
+    islands: seg.islands, smooth: seg.lineMode === 'uniform', lineMode: seg.lineMode, edgeSmooth: n('edgeSmooth'), lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -98,12 +98,19 @@ function rawP() {
 function syncUI() {
   const p = P();
   $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive';
-  $('rowLW').hidden = $('rowSm').hidden = !p.smooth;
+  $('rowLW').hidden = $('rowSm').hidden = !p.smooth; $('rowEdge').hidden = p.smooth;
+  $('lineHint').textContent = p.smooth ? '沿每条线的中心重新画一遍，线宽统一、曲线顺滑。适合照片、铅笔稿等线条粗细不匀的图；细节多的图会丢掉一些小线条。'
+    : '保留原图每条线的形状和粗细，只把边缘磨平，太细的地方加粗到能打印。适合已经是干净线稿的图。';
+  $('bulge').disabled = p.lithoStep; $('rowBulge').title = p.lithoStep ? '阶梯模式下不起作用' : '';
+  $('printerSum').textContent = `${$('printer').selectedOptions[0].textContent.replace(/（.*）/, '')} · ${p.printer.d} mm 喷嘴 · ${p.printer.h.toFixed(2)} mm 层高 · ${p.printer.walls} 圈墙`;
+  updateWidthHint(p);
   const br = seg.brush !== 'off';
   $('rowBrush').hidden = $('brushBtns').hidden = $('brushHint').hidden = !br;
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
-  $('s2body').hidden = litho; $('s2note').hidden = !litho;
+  $('s2body').hidden = litho; $('s2note').hidden = true;
+  $('s2').closest('section').hidden = litho;   // a lithophane uses the photo directly — no line-art step
+  let k = 0; document.querySelectorAll('.controls > .step').forEach(sec => { if (!sec.hidden) sec.querySelector('h2 .n').textContent = ++k; });
   if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth || p.lithoGrid || p.lithoStep; $('rowLevels').hidden = !p.lithoStep; $('rowSmooth').hidden = !p.lithoSmooth; $('rowGrid').hidden = !p.lithoGrid; }
   if (litho && p.lithoStep) {
     $('facetHint').textContent = `阶梯：把厚度分成 ${p.levels} 级，每一级是平台、级与级之间是竖直的墙（上下一样粗）。按打印机设置，每个凸起和缝隙至少 ${p.printer.minLine.toFixed(2)} / ${p.printer.minGap.toFixed(2)} mm 宽，每级高度取整到 ${p.printer.h.toFixed(2)} mm 层高——比细线更细的细节会被去掉，换来每一处都能打出来。级数越多越接近照片的层次；明暗起伏在阶梯模式下不起作用。`;
@@ -125,8 +132,8 @@ function syncUI() {
     : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里。';
   $('rowBed').hidden = $('printer').value !== 'custom';
   const r = p.printer;
-  $('printerNote').textContent = `按 ${r.d} mm 喷嘴、${r.h.toFixed(2)} mm 层高：线条至少 ${r.minLine.toFixed(2)} mm 宽（${r.walls} 圈墙），小于 ${r.minGap} mm 的缝隙会被填上，文字笔画至少 ${r.minStroke.toFixed(2)} mm，高度都取整到层高。` +
-    (p.adjusted.length ? ' 已自动调整：' + p.adjusted.join('；') + '。' : ' 当前设置都能打印。');
+  $('printerNote').textContent = `线条 ≥ ${r.minLine.toFixed(2)} mm · 缝隙 ≥ ${r.minGap} mm · 文字笔画 ≥ ${r.minStroke.toFixed(2)} mm · 高度按 ${r.h.toFixed(2)} mm 层高取整` +
+    (p.adjusted.length ? '。已自动调整：' + p.adjusted.join('；') + '。' : '');
   if (typeof drawLegend === "function") drawLegend();
 }
 
@@ -191,7 +198,37 @@ function makeSample() {
   x.lineWidth = 2; x.beginPath(); x.moveTo(470, 470); x.quadraticCurveTo(515, 450, 560, 470); x.stroke();
   return c;
 }
+// typical stroke width of a mask in pixels: twice the distance to the background, sampled on the centre lines
+function medianLineWidth(m, W, H) {
+  const inv = new Uint8Array(W * H); for (let i = 0; i < inv.length; i++) inv[i] = m[i] ? 0 : 1;
+  const { d2 } = edt(inv, W, H), sk = thin(m, W, H), v = [];
+  for (let i = 0; i < sk.length; i++) if (sk[i]) v.push(2 * Math.sqrt(d2[i]));
+  if (v.length < 20) return 0;
+  v.sort((x, y) => x - y); return v[v.length >> 1];
+}
+let recWidth = 0;
+function updateWidthHint(p) {
+  const el = $('widthHint'); recWidth = 0;
+  if (p.kind === 'litho' || !cache.lineMM || cache.kind === undefined) { el.hidden = true; return; }
+  const line = cache.lineMM, need = p.printer.minLine;
+  if (line >= need * 0.95) { el.hidden = true; return; }
+  const bedMax = Math.max(p.printer.bed[0], p.printer.bed[1]) - 2 * (p.base !== 'none' ? p.overhang : 0) - 4;
+  recWidth = Math.min(250, Math.ceil(p.width * need / line / 5) * 5);
+  $('widthHintText').textContent = `原图的线大多约 ${line.toFixed(2)} mm 宽，比打印机能打的最细线 ${need.toFixed(2)} mm 还细，会被加粗，密的地方（脸、文字）容易糊在一起。建议图案宽度 ≥ ${recWidth} mm` + (recWidth > bedMax ? `（超过打印机可用的约 ${Math.max(0, Math.floor(bedMax))} mm，可以只框选一部分，或换小喷嘴）。` : '。');
+  el.hidden = false;
+}
+$('useRecWidth').addEventListener('click', () => { if (!recWidth) return; $('width').value = recWidth; $('width').dispatchEvent(new Event('input')); });
+// clean line art (almost only black and white) keeps its own lines; photos and sketches get redrawn
+function guessLineMode(img) {
+  const k = Math.min(1, 400 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height);
+  const d = x.getImageData(0, 0, c.width, c.height).data; let mid = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { const v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; n++; if (v > 60 && v < 200) mid++; }
+  return mid / n < 0.1 ? 'keep' : 'uniform';
+}
 function setSource(img, name) {
+  setSeg('lineMode', guessLineMode(img));
   srcImg = img; crop = null; strokes = [];
   $('srcName').textContent = name;
   invalidate(1);
@@ -361,24 +398,25 @@ function trimmedCrop(bw, W, H, c) {
 }
 function stage2(p) {
   const { gray, W, H, s, ec } = cache;
-  if (p.thMode === 'auto') { cache.autoTh = autoThreshold(gaussBlur(gray, W, H, 0.8)); $('threshold').value = cache.autoTh; $('threshold').dispatchEvent(new Event('show')); document.querySelector('output[for=threshold]').textContent = cache.autoTh; }
+  if (p.thMode === 'auto') { const gb = gaussBlur(gray, W, H, 0.8); cache.autoTh = p.lineMode === 'keep' ? otsu(gb) : autoThreshold(gb); $('threshold').value = cache.autoTh; $('threshold').dispatchEvent(new Event('show')); document.querySelector('output[for=threshold]').textContent = cache.autoTh; }
   const m = binarize(gray, W, H, p, s);
   applyEdits(m, W, H, s, ec, strokes);
   removeSpecks(m, W, H, p.speck / (s * s));
-  cache.bw = dilate(m, W, H, 1);
+  cache.lineMM = medianLineWidth(m, W, H) * s;
+  cache.bw = p.lineMode === 'uniform' ? dilate(m, W, H, 1) : m;
 }
 function stage3(p) {
   const { W, H, s } = cache; let m = cache.bw.slice();
   const stats = {};
   if (p.kind === 'cutout' && p.bar) addBottomBar(m, W, H, Math.round(4 / s));
-  const rMin = Math.max(1, Math.floor(p.minWidth / (2 * s))), bridgeR = Math.max(rMin + 1, Math.round(0.45 / s));
+  const rMin = Math.max(1, Math.ceil((p.minWidth / s - 1) / 2)), bridgeR = rMin;   // strokes of 2·rMin+1 px are at least minWidth wide; bridges only as wide as that
   // a relief plaque holds every line on its plate, so islands are fine there
   const islands = p.kind === 'plaque' ? 'keep' : p.islands;
   if (islands !== 'remove') m = thickenThin(m, W, H, rMin);
   if (islands !== 'keep') m = resolveIslands(m, W, H, rMin, bridgeR, islands, stats);
   let field;
   if (p.smooth) field = uniformLines(m, W, H, s, { lineWidth: Math.max(p.lineWidth, p.minWidth), smoothness: p.smoothness });
-  else field = maskToField(m, W, H, 0.07 / s);
+  else field = maskToField(m, W, H, Math.max(0.5, p.edgeSmooth / s));   // keep the drawing's own lines, just round off the pixel edges
   let mask = fieldToMask(field);
   const fixed = islands === 'keep' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, islands, {});
   for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
@@ -390,7 +428,7 @@ function stage3(p) {
     let filled = 0; for (let i = 0; i < mask.length; i++) if (closed[i] && !mask[i]) { mask[i] = 1; field[i] = Math.max(field[i], 0.75); filled++; }
     stats.gapsFilled = filled * s * s;
   }
-  const pieces = label(opening(mask, W, H, rMin), W, H).n;
+  const pieces = label(rMin > 1 ? opening(mask, W, H, rMin - 1) : mask, W, H).n;
   Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind });
 }
 let built = null;
@@ -413,6 +451,9 @@ async function stage4(p) {
     if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role, M: v.M });
     else for (const q of piecesOf(pt)) show.push({ arrays: meshArrays(q.m), role: pt.role, M: q.M });
   }
+  // smooth and grid lithophanes are meant to be continuous surfaces: shade them smoothly, as they will print
+  // (flat shading exaggerates 0.01 mm facet angles into a "frosted" look that no printer reproduces)
+  if (p.kind === 'litho' && (p.lithoSmooth || p.lithoGrid)) for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
   if (p.kind === 'plaque') for (const it of show) if (it.role === 'panel') {
     const pos = it.arrays.pos;
     if (p.base === 'none') it.tint = v => pos[v * 3 + 2] > p.plateT + 0.05;
@@ -432,6 +473,7 @@ async function stage4(p) {
 // ---------- status ----------
 function setWarnings(list) { const ul = $('warnings'); ul.innerHTML = ''; for (const w of list) { const li = document.createElement('li'); li.textContent = w; ul.appendChild(li); } }
 function updateStatus(p) {
+  updateWidthHint(p);
   const st = $('status'); st.innerHTML = '';
   const add = (html) => { const s = document.createElement('span'); s.innerHTML = html; st.appendChild(s); };
   const { W, H, s, pieces, stats } = cache;
@@ -502,7 +544,7 @@ const view = (() => {
         g.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
       // flat shading needs one copy of every corner (3× the memory); above ~400 k triangles keep the shared
       // vertices and smooth normals instead — at that density it looks the same
-      if (it.arrays.idx.length / 3 <= 400000) g = g.toNonIndexed();
+      if (!it.smoothShade && it.arrays.idx.length / 3 <= 400000) g = g.toNonIndexed();
       g.computeVertexNormals();
       it.arrays = null;
       const xf = it.M;

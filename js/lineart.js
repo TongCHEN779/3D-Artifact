@@ -6,12 +6,14 @@ function binarize(gray, W, H, p, s) {
   if (p.thMode === 'adaptive') {
     m = adaptiveMask(g, W, H, Math.max(15, Math.round(3 / s) | 1), p.adaptC);
   } else {
-    const th = p.thMode === 'auto' ? autoThreshold(g) : p.threshold;
+    // clean line art: cut at Otsu (half way between ink and paper) so lines keep their drawn width;
+    // sketches/photos: a more generous cut so faint strokes survive
+    const th = p.thMode === 'auto' ? (p.lineMode === 'keep' ? otsu(g) : autoThreshold(g)) : p.threshold;
     m = new Uint8Array(W * H);
     for (let i = 0; i < m.length; i++) m[i] = g[i] < th ? 1 : 0;
   }
   if (p.invert) for (let i = 0; i < m.length; i++) m[i] ^= 1;
-  m = closing(m, W, H, 2);
+  if (p.lineMode !== 'keep') m = closing(m, W, H, 2);   // knit broken pencil strokes; clean line art doesn't need it
   return m;
 }
 function autoThreshold(g) {
@@ -48,20 +50,23 @@ function addBottomBar(m, W, H, barPx) {
 
 // thicken strokes that are thinner than the printable minimum
 function thickenThin(m, W, H, rMin) {
-  const op = opening(m, W, H, rMin);
-  const thin = new Uint8Array(W * H);
-  for (let i = 0; i < m.length; i++) thin[i] = m[i] && !op[i] ? 1 : 0;
-  const near = dilate(thin, W, H, rMin + 2), grown = dilate(m, W, H, rMin);
-  const out = m.slice();
-  for (let i = 0; i < m.length; i++) if (near[i] && grown[i]) out[i] = 1;
+  // Widen only the strokes that are thinner than 2·rMin+1 px, and only up to that width: a disc of radius rMin
+  // on every centre-line pixel whose half-width is below rMin. Strokes that are already wide enough stay as drawn.
+  const inv = new Uint8Array(W * H); for (let i = 0; i < inv.length; i++) inv[i] = m[i] ? 0 : 1;
+  const { d2 } = edt(inv, W, H), sk = thin(m, W, H), seed = new Uint8Array(W * H), lim = (rMin + 0.5) * (rMin + 0.5);
+  let any = 0; for (let i = 0; i < sk.length; i++) if (sk[i] && d2[i] < lim) { seed[i] = 1; any = 1; }
+  if (!any) return m.slice();
+  const grown = dilate(seed, W, H, rMin), out = m.slice();
+  for (let i = 0; i < out.length; i++) if (grown[i]) out[i] = 1;
   return out;
 }
 
 // connect islands to the main body with short bridges (or drop them)
 function resolveIslands(m, W, H, rMin, bridgeR, mode, stats) {
   let out = m.slice(); stats.bridges = 0; stats.dropped = 0;
-  for (let iter = 0; iter < 25; iter++) {
-    const op = opening(out, W, H, rMin);
+  for (let iter = 0; iter < 10; iter++) {
+    // strokes are already at least 2·rMin+1 wide here; allow one pixel of slack so diagonal joints count as connected
+    const op = rMin > 1 ? opening(out, W, H, rMin - 1) : out;
     const { lab, n, areas } = label(op, W, H);
     if (n <= 1) break;
     let main = 1; for (let k = 2; k <= n; k++) if (areas[k] > areas[main]) main = k;
@@ -74,10 +79,10 @@ function resolveIslands(m, W, H, rMin, bridgeR, mode, stats) {
     const { d2, idx } = edt(mm, W, H);
     const best = new Float64Array(n + 1).fill(Infinity), bp = new Int32Array(n + 1).fill(-1);
     for (let i = 0; i < lab.length; i++) { const l = lab[i]; if (l && l !== main && d2[i] < best[l]) { best[l] = d2[i]; bp[l] = i; } }
-    // bridge the closest island first; others may get connected through it
-    let first = -1; for (let k = 1; k <= n; k++) if (k !== main && (first < 0 || best[k] < best[first])) first = k;
-    const order = [first];
-    for (let k = 1; k <= n; k++) if (k !== main && k !== first && Math.sqrt(best[k]) < 3 * bridgeR) order.push(k);
+    // grow the main body outwards: first join the islands that are very close, then allow longer bridges each
+    // round. Islands far from the main body usually join through a nearer neighbour, so bridges stay short.
+    const lim = iter >= 9 ? Infinity : bridgeR * 4 * Math.pow(2, iter);
+    let order = []; for (let k = 1; k <= n; k++) if (k !== main && bp[k] >= 0 && Math.sqrt(best[k]) <= lim) order.push(k);
     for (const k of order) {
       const p = bp[k], q = idx[p];
       stampSegment(out, W, H, p % W, (p / W) | 0, q % W, (q / W) | 0, bridgeR, 1);
