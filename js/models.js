@@ -90,7 +90,7 @@ function buildModels(art, p, fonts, litho) {
   // lithophane printed on its own: optionally stand it upright with a peel-off brim and two snap-off side fins
   const lithoPrint = p.kind === 'litho' && p.printAid ? lithoPrintAids(panel, p, warnings) : null;
   if (!standing) {
-    if (lithoPrint) return { parts: [{ name: PANEL_NAME[p.kind] + '（竖打，含支脚）', file: PANEL_FILE[p.kind], manifold: lithoPrint, role: 'panel' }], warnings, dims: dimsOf(lithoPrint) };
+    if (lithoPrint) return { parts: [Object.assign({ name: PANEL_NAME[p.kind] + '（竖打，含支脚）', file: PANEL_FILE[p.kind], role: 'panel' }, lithoPrint)], warnings, dims: partDims(lithoPrint) };
     return { parts: [{ name: PANEL_NAME[p.kind], file: PANEL_FILE[p.kind], manifold: panel, role: 'panel', flat: true }], warnings, dims: dimsOf(panel) };
   }
 
@@ -115,28 +115,60 @@ function buildModels(art, p, fonts, litho) {
     base = G(base.subtract(cut));
   }
 
-  const up = G(panel.rotate([90, 0, 0]));
-  const ub = up.boundingBox();
-  // centre the flat 0..panelT slab (not the bounding box) over the slot, so a curved lithophane's bulge doesn't shift it
-  const placed = G(up.translate([-(ub.min[0] + ub.max[0]) / 2, panelT / 2, BT - insert - ub.min[2]]));
+  // stand the panel in the slot: rotate about x, centre the flat 0..panelT slab (not the bounding box) over the
+  // slot so a curved lithophane's bulge doesn't shift it. Big panels keep this as a matrix (no copy).
+  const placedM = RX90(-(pb.min[0] + pb.max[0]) / 2, panelT / 2, BT - insert - pb.min[1]);
+  const big = panel.numTri() > BIG_TRIS;
+  const placed = big ? null : G(G(panel.rotate([90, 0, 0])).translate([placedM[3], placedM[7], placedM[11]]));
+  const placedPiece = big ? { m: panel, M: placedM } : { m: placed, M: null };
 
   if (p.base === 'onepiece') {
+    const view = [{ m: base, role: 'base' }, Object.assign({ role: 'panel' }, placedPiece)];
+    if (big) { bigNote(warnings, panel.numTri()); const pt = { pieces: [{ m: base, M: null }, placedPiece] }; return { parts: [{ name: '一体式摆件', file: 'stand_onepiece.stl', pieces: pt.pieces, role: 'combo', view }], warnings, dims: partDims(pt) }; }
     const one = G(Manifold.union(base, placed));
-    return { parts: [{ name: '一体式摆件', file: 'stand_onepiece.stl', manifold: one, role: 'combo', view: [{ m: base, role: 'base' }, { m: placed, role: 'panel' }] }], warnings, dims: dimsOf(one) };
+    return { parts: [{ name: '一体式摆件', file: 'stand_onepiece.stl', manifold: one, role: 'combo', view }], warnings, dims: dimsOf(one) };
   }
   const c = p.clearance, sd = insert + 0.5;
   const slot = box(0, 0, BT - sd, pw + 2 * c, panelT + 2 * c, sd + 2);
   const slotted = G(base.subtract(slot));
-  const all = G(Manifold.union(slotted, placed));
   return {
     parts: [
-      { name: PANEL_NAME[p.kind] + (p.kind === 'litho' ? (lithoPrint ? '（竖打，含支脚）' : '') : '（平放打印）'), file: PANEL_FILE[p.kind], manifold: lithoPrint || panel, role: 'panel', flat: true, viewM: placed },
+      Object.assign({ name: PANEL_NAME[p.kind] + (p.kind === 'litho' ? (lithoPrint ? '（竖打，含支脚）' : '') : '（平放打印）'), file: PANEL_FILE[p.kind], role: 'panel', flat: true, view: [Object.assign({ role: 'panel' }, placedPiece)] }, lithoPrint || { manifold: panel }),
       { name: '卡槽底座', file: 'base_with_slot.stl', manifold: slotted, role: 'base' },
     ],
-    warnings, dims: dimsOf(all),
+    warnings, dims: partDims({ pieces: [{ m: slotted, M: null }, placedPiece] }),
     slot: { w: pw + 2 * c, t: panelT + 2 * c, depth: sd },
   };
 }
+// ---- parts made of pieces --------------------------------------------------------------------------
+// A part is either { manifold } or { pieces: [{ m, M }] } where M is a 3×4 row-major transform applied only
+// when the STL is written or the viewer draws it. Rotating or moving a multi-million-triangle manifold makes a
+// full copy inside the geometry kernel; keeping the matrix aside avoids those copies.
+const RX90 = (tx, ty, tz) => [1, 0, 0, tx, 0, 0, -1, ty, 0, 1, 0, tz];      // rotate +90° about x, then move
+function bboxM(m, M) {
+  const b = m.boundingBox(); if (!M) return b;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]])
+    for (let r = 0; r < 3; r++) { const v = M[4 * r] * x + M[4 * r + 1] * y + M[4 * r + 2] * z + M[4 * r + 3]; lo[r] = Math.min(lo[r], v); hi[r] = Math.max(hi[r], v); }
+  return { min: lo, max: hi };
+}
+function piecesOf(pt) { return pt.pieces || [{ m: pt.manifold || pt, M: null }]; }
+function partBBox(pt) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const q of piecesOf(pt)) { const b = bboxM(q.m, q.M); for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], b.min[i]); hi[i] = Math.max(hi[i], b.max[i]); } }
+  return { min: lo, max: hi };
+}
+function partDims(pt) { const b = partBBox(pt); return [0, 1, 2].map(i => b.max[i] - b.min[i]); }
+function partTris(pt) { return piecesOf(pt).reduce((a, q) => a + q.m.numTri(), 0); }
+
+// Boolean union is exact but needs several copies of the geometry in memory. For very large meshes
+// (high-detail lithophanes) the overlapping solids are packed into one file instead; every slicer merges
+// overlapping shells of one object when it slices, so the print is the same.
+const BIG_TRIS = 500000;
+function bigNote(warnings, nt) {
+  if (warnings && !warnings.joined) { warnings.joined = true; warnings.push(`模型很大（${(nt / 1e6).toFixed(1)} 百万三角面），为节省内存，重叠的部件（支脚、底座）没有做布尔合并，而是作为几个相互穿插的壳体放在同一个 STL 里——切片软件会自动合并，打印结果一样。`); }
+}
+
 // Print aids for a lithophane standing on its bottom edge (the usual way to print one):
 //  · a 0.4 mm brim (two layers) under and around the bottom edge, for adhesion — peel it off after printing;
 //  · a triangular fin on each side, 0.3 mm away from the panel and joined to it by small tabs every 8 mm,
@@ -144,24 +176,29 @@ function buildModels(art, p, fonts, litho) {
 // The result is returned standing, bottom edge on z = 0, ready for the slicer.
 function lithoPrintAids(panel, p, warnings) {
   const { Manifold } = MF;
-  const b = panel.boundingBox(), x0 = b.min[0], x1 = b.max[0], y0 = b.min[1], Hp = b.max[1] - b.min[1], W = x1 - x0;
+  const b = panel.boundingBox(), x0 = b.min[0], x1 = b.max[0], y0 = b.min[1], Hp = b.max[1] - b.min[1];
   const T = lithoDepth(p), F = Math.max(12, Math.min(25, Hp * 0.18)), Hf = Math.min(Hp * 0.6, 70);
   const pr = p.printer || { h: 0.2, lineW: 0.42 }, gap = Math.max(0.3, pr.h * 1.5), ft = Math.max(1.6, 3 * pr.lineW), brimH = 2 * pr.h, brimOut = 6, tabW = Math.max(1, 2 * pr.lineW);
   const cub = (ax, ay, az, bx, by, bz) => G(G(Manifold.cube([bx - ax, by - ay, bz - az])).translate([ax, ay, az]));
-  const parts = [panel, cub(x0 - gap - ft - brimOut, y0, -F - 4, x1 + gap + ft + brimOut, y0 + brimH, T + F + 4)];
+  const aids = [cub(x0 - gap - ft - brimOut, y0, -F - 4, x1 + gap + ft + brimOut, y0 + brimH, T + F + 4)];
   for (const side of [-1, 1]) {
     const xa = side < 0 ? x0 - gap - ft : x1 + gap, xb = xa + ft, pts = [];
     for (const x of [xa, xb]) pts.push([x, y0, -F], [x, y0, T + F], [x, y0 + Hf, 0], [x, y0 + Hf, T]);
-    parts.push(G(Manifold.hull(pts)));
-    // tabs bridge the 0.3 mm gap; they reach 0.3 mm into the panel's (flat) side edge
+    aids.push(G(Manifold.hull(pts)));
+    // tabs bridge the gap; they reach 0.3 mm into the panel's (flat) side edge
     const ta = side < 0 ? xb - 0.05 : x1 - 0.3, tb = side < 0 ? x0 + 0.3 : xa + 0.05;
-    for (let y = y0 + 3; y < y0 + Hf - 2; y += 8) parts.push(cub(ta, y, 0.4, tb, y + tabW, Math.max(0.8, T - 0.4)));
+    for (let y = y0 + 3; y < y0 + Hf - 2; y += 8) aids.push(cub(ta, y, 0.4, tb, y + tabW, Math.max(0.8, T - 0.4)));
   }
-  let m = G(Manifold.union(parts));
-  m = G(m.rotate([90, 0, 0]));
-  const mb = m.boundingBox();
-  m = G(m.translate([-(mb.min[0] + mb.max[0]) / 2, -(mb.min[1] + mb.max[1]) / 2, -mb.min[2]]));
-  return m;
+  const aid = G(Manifold.union(aids));           // small: brim, fins and tabs only
+  // stand it up: rotate about x, centre on x/y, bottom on z = 0
+  const bb = partBBox({ pieces: [{ m: panel, M: RX90(0, 0, 0) }, { m: aid, M: RX90(0, 0, 0) }] });
+  const M = RX90(-(bb.min[0] + bb.max[0]) / 2, -(bb.min[1] + bb.max[1]) / 2, -bb.min[2]);
+  if (panel.numTri() <= BIG_TRIS) {
+    let u = G(Manifold.union(panel, aid)); u = G(u.rotate([90, 0, 0]));
+    return { manifold: G(u.translate([M[3], M[7], M[11]])) };
+  }
+  bigNote(warnings, panel.numTri());
+  return { pieces: [{ m: panel, M }, { m: aid, M }] };
 }
 const PANEL_NAME = { cutout: '镂空剪影', plaque: '浮雕牌', litho: '透光浮雕' };
 const PANEL_FILE = { cutout: 'cutout.stl', plaque: 'relief_plaque.stl', litho: 'lithophane.stl' };
@@ -169,48 +206,59 @@ function dimsOf(m) { const b = m.boundingBox(); return [0, 1, 2].map(i => b.max[
 
 function meshArrays(m) {
   const mesh = m.getMesh(), np = mesh.numProp, vp = mesh.vertProperties;
-  const nv = vp.length / np, pos = new Float32Array(nv * 3);
-  for (let i = 0; i < nv; i++) { pos[i * 3] = vp[i * np]; pos[i * 3 + 1] = vp[i * np + 1]; pos[i * 3 + 2] = vp[i * np + 2]; }
-  return { pos, idx: Uint32Array.from(mesh.triVerts) };
+  let pos = vp;
+  if (np !== 3) { const nv = vp.length / np; pos = new Float32Array(nv * 3); for (let i = 0; i < nv; i++) { pos[i * 3] = vp[i * np]; pos[i * 3 + 1] = vp[i * np + 1]; pos[i * 3 + 2] = vp[i * np + 2]; } }
+  return { pos, idx: mesh.triVerts };
 }
-
-function stlBinary(m) {
-  const { pos, idx } = meshArrays(m), nt = idx.length / 3;
-  const buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
-  const hdr = 'Line-art 3D print model'; for (let i = 0; i < hdr.length; i++) dv.setUint8(i, hdr.charCodeAt(i));
-  dv.setUint32(80, nt, true);
-  let o = 84;
-  for (let t = 0; t < nt; t++) {
-    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
-    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
-    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
-    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
-    dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
-    for (const v of [a, b, c]) { dv.setFloat32(o, pos[v], true); dv.setFloat32(o + 4, pos[v + 1], true); dv.setFloat32(o + 8, pos[v + 2], true); o += 12; }
-    dv.setUint16(o, 0, true); o += 2;
+// Binary STL written in chunks of at most 1 M triangles (50 MB), returned as a list of pieces plus their CRC,
+// so a 6-million-triangle model never needs one 300 MB buffer (the ZIP and the download take the pieces as is).
+function stlParts(part) {
+  const pcs = piecesOf(part), CH = 1000000, parts = [];
+  const nt = pcs.reduce((a, q) => a + q.m.numTri(), 0);
+  const head = new Uint8Array(84), hd = new DataView(head.buffer);
+  const hdr = 'Line-art 3D print model'; for (let i = 0; i < hdr.length; i++) head[i] = hdr.charCodeAt(i);
+  hd.setUint32(80, nt, true); parts.push(head);
+  let crc = crcUpdate(0xFFFFFFFF, head);
+  for (const q of pcs) {
+  let { pos, idx } = meshArrays(q.m); const qt = idx.length / 3, M = q.M;
+  if (M) { const P = new Float32Array(pos.length); for (let i = 0; i < pos.length; i += 3) { const x = pos[i], y = pos[i + 1], z = pos[i + 2]; P[i] = M[0] * x + M[1] * y + M[2] * z + M[3]; P[i + 1] = M[4] * x + M[5] * y + M[6] * z + M[7]; P[i + 2] = M[8] * x + M[9] * y + M[10] * z + M[11]; } pos = P; }
+  for (let t0 = 0; t0 < qt; t0 += CH) {
+    const n = Math.min(CH, qt - t0), buf = new ArrayBuffer(n * 50), dv = new DataView(buf); let o = 0;
+    for (let t = t0; t < t0 + n; t++) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+      for (const v of [a, b, c]) { dv.setFloat32(o, pos[v], true); dv.setFloat32(o + 4, pos[v + 1], true); dv.setFloat32(o + 8, pos[v + 2], true); o += 12; }
+      dv.setUint16(o, 0, true); o += 2;
+    }
+    const u = new Uint8Array(buf); crc = crcUpdate(crc, u); parts.push(u);
   }
-  return new Uint8Array(buf);
+  }
+  return { parts, size: 84 + nt * 50, crc: (crc ^ 0xFFFFFFFF) >>> 0 };
 }
-
-// minimal ZIP (store, no compression)
+function stlBinary(part) { const { parts, size } = stlParts(part), out = new Uint8Array(size); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; }
 const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-function crc32(d) { let c = 0xFFFFFFFF; for (let i = 0; i < d.length; i++) c = CRC_T[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function crcUpdate(c, d) { for (let i = 0; i < d.length; i++) c = CRC_T[(c ^ d[i]) & 255] ^ (c >>> 8); return c; }
+function crc32(d) { return (crcUpdate(0xFFFFFFFF, d) ^ 0xFFFFFFFF) >>> 0; }
 function makeZip(files) {
   const enc = new TextEncoder(), chunks = [], central = []; let off = 0;
   for (const f of files) {
-    const name = enc.encode(f.name), data = f.data, crc = crc32(data);
+    // f.data: one Uint8Array, or f.parts + f.size + f.crc for data already split into pieces
+    const name = enc.encode(f.name), pieces = f.parts || [f.data], size = f.parts ? f.size : f.data.length, crc = f.parts ? f.crc : crc32(f.data);
     const h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
-    h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true);
-    h.setUint32(22, data.length, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
-    chunks.push(new Uint8Array(h.buffer), name, data);
+    h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, size, true);
+    h.setUint32(22, size, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(h.buffer), name, ...pieces);
     const c = new DataView(new ArrayBuffer(46));
     c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
     c.setUint16(10, 0, true); c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
-    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true);
+    c.setUint32(20, size, true); c.setUint32(24, size, true); c.setUint16(28, name.length, true);
     c.setUint32(42, off, true);
     central.push(new Uint8Array(c.buffer), name);
-    off += 30 + name.length + data.length;
+    off += 30 + name.length + size;
   }
   const csize = central.reduce((a, b) => a + b.length, 0);
   const e = new DataView(new ArrayBuffer(22));

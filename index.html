@@ -64,7 +64,8 @@
         <label class="check" data-for="cutout"><input type="checkbox" id="bar" checked>底部加连接横条</label>
         <div class="row" data-for="plaque" hidden><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
         <div class="row two" data-for="litho" hidden><label>表面</label>
-          <div class="seg" data-name="surface"><button type="button" data-v="facet" aria-pressed="false">多面体</button><button type="button" data-v="smooth" aria-pressed="true">平滑</button></div></div>
+          <div class="seg" data-name="surface"><button type="button" data-v="facet" aria-pressed="false">多面体</button><button type="button" data-v="smooth" aria-pressed="true">平滑</button><button type="button" data-v="grid" aria-pressed="false">网格</button></div></div>
+        <div class="row" data-for="litho" hidden id="rowGrid"><label for="gridMM">网格间距</label><input type="range" id="gridMM" min="0.1" max="1" step="0.05" value="0.25"><output for="gridMM"></output></div>
         <div class="row" data-for="litho" hidden id="rowSmooth"><label for="smoothDetail">平滑精度</label><input type="range" id="smoothDetail" min="0" max="100" step="1" value="45"><output for="smoothDetail"></output></div>
         <div class="row" data-for="litho" hidden id="rowFacets"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="18"><input type="number" id="facetsNum" class="num" min="500" max="3000000" step="1000" value="4000" aria-label="分面点数"></div>
         <div class="row" data-for="litho" hidden><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
@@ -162,8 +163,8 @@
 <script src="vendor/opentype/opentype.min.js"></script>
 <script src="js/raster.js?v=46bcd837"></script>
 <script src="js/lineart.js?v=7d43b09c"></script>
-<script src="js/models.js?v=ba06fb6f"></script>
-<script src="js/litho.js?v=f1d4afbd"></script>
-<script src="js/app.js?v=7ff51f83"></script>
+<script src="js/models.js?v=746f8647"></script>
+<script src="js/litho.js?v=d7f44c4e"></script>
+<script src="js/app.js?v=24ebcb75"></script>
 </body>
 </html>

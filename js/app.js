@@ -11,7 +11,7 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  layer: v => (+v).toFixed(2) + ' mm', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
+  layer: v => (+v).toFixed(2) + ' mm', gridMM: v => (+v).toFixed(2) + ' mm', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 // facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
 const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
@@ -19,7 +19,7 @@ const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n /
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
@@ -88,7 +88,7 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -104,8 +104,11 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth; $('rowSmooth').hidden = !p.lithoSmooth; }
-  if (litho && p.lithoSmooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
+  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth || p.lithoGrid; $('rowSmooth').hidden = !p.lithoSmooth; $('rowGrid').hidden = !p.lithoGrid; }
+  if (litho && p.lithoGrid) {
+    const nx = Math.round(p.width / p.gridMM) + 1, nv = nx * nx;   // square estimate
+    $('facetHint').textContent = `规则网格：每 ${p.gridMM.toFixed(2)} mm 一个点，约 ${(nv / 1e4).toFixed(0)} 万个点、${(2 * nv / 1e4).toFixed(0)} 万个三角面（正方形图案估算），STL 约 ${Math.round(nv * 4 * 50 / 1e6)} MB。点分布均匀、表面最平顺，和大多数透光浮雕软件一样；间距小于喷嘴的一半（${(p.printer.d / 2).toFixed(2)} mm）后打印出来差别不大。`;
+  } else if (litho && p.lithoSmooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
   else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。${p.printer.d} mm 喷嘴能表现的最小细节约 ${(p.printer.d * 0.75).toFixed(2)} mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
@@ -402,12 +405,11 @@ async function stage4(p) {
     if (!art) { built = null; view.show([]); setWarnings(['没有识别到线条。试试调整灵敏度或勾选反相。']); updateStatus(p); return; }
     built = buildModels(art, p, fonts);
   }
-  built.meshes = built.parts.map(pt => ({ ...pt, arrays: meshArrays(pt.manifold) }));
+  built.meshes = built.parts;   // geometry stays in the kernel; arrays are made only when needed
   const show = [];
   for (const pt of built.parts) {
-    if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role });
-    else if (pt.viewM) show.push({ arrays: meshArrays(pt.viewM), role: pt.role });
-    else show.push({ arrays: meshArrays(pt.manifold), role: pt.role });
+    if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role, M: v.M });
+    else for (const q of piecesOf(pt)) show.push({ arrays: meshArrays(q.m), role: pt.role, M: q.M });
   }
   if (p.kind === 'plaque') for (const it of show) if (it.role === 'panel') {
     const pos = it.arrays.pos;
@@ -417,7 +419,7 @@ async function stage4(p) {
   view.show(show);
   const bed = p.printer.bed;
   for (const m of built.parts) {
-    const d = dimsOf(m.manifold), [a1, b1] = [Math.max(d[0], d[1]), Math.min(d[0], d[1])], [a2, b2] = [Math.max(bed[0], bed[1]), Math.min(bed[0], bed[1])];
+    const d = partDims(m), [a1, b1] = [Math.max(d[0], d[1]), Math.min(d[0], d[1])], [a2, b2] = [Math.max(bed[0], bed[1]), Math.min(bed[0], bed[1])];
     if (a1 > a2 || b1 > b2 || d[2] > bed[2]) built.warnings.push(`${m.file}（${d.map(v => v.toFixed(0)).join(' × ')} mm）超出打印机范围 ${bed.join(' × ')} mm，请缩小图案宽度或底座外伸。`);
   }
   setWarnings(built.warnings);
@@ -453,7 +455,7 @@ function renderFiles(p) {
   const fl = $('fileList'); fl.innerHTML = '';
   if (!built) return;
   for (const m of built.meshes) {
-    const d = dimsOf(m.manifold).map(v => v.toFixed(0)).join('×');
+    const d = partDims(m).map(v => v.toFixed(0)).join('×');
     const row = document.createElement('div'); row.className = 'file';
     row.innerHTML = `<code></code><span></span><button type="button">STL</button>`; row.querySelector('code').textContent = m.file; row.querySelector('span').textContent = `${m.name} · ${d} mm`;
     row.querySelector('button').addEventListener('click', () => save(m.file, stlBinary(m.manifold)));
@@ -495,9 +497,15 @@ const view = (() => {
       if (it.tint) { const nv = it.arrays.pos.length / 3, col = new Float32Array(nv * 3), a = new THREE.Color(colors.panel), b = new THREE.Color(0x2f3532);
         for (let v = 0; v < nv; v++) { const c = it.tint(v) ? b : a; col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
         g.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
-      g = g.toNonIndexed(); g.computeVertexNormals();
+      // flat shading needs one copy of every corner (3× the memory); above ~400 k triangles keep the shared
+      // vertices and smooth normals instead — at that density it looks the same
+      if (it.arrays.idx.length / 3 <= 400000) g = g.toNonIndexed();
+      g.computeVertexNormals();
+      it.arrays = null;
+      const xf = it.M;
       const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: it.tint ? 0xffffff : (colors[it.role] || 0xefe9de), vertexColors: !!it.tint, roughness: 0.6, metalness: 0.02 }));
-      group.add(mesh); box.expandByObject(mesh);
+      if (xf) { mesh.matrixAutoUpdate = false; mesh.matrix.set(xf[0], xf[1], xf[2], xf[3], xf[4], xf[5], xf[6], xf[7], xf[8], xf[9], xf[10], xf[11], 0, 0, 0, 1); }
+      group.add(mesh); mesh.updateMatrixWorld(true); box.expandByObject(mesh);
     }
     if (box.isEmpty()) return;
     // ground grid at z = min
@@ -546,7 +554,7 @@ function lineartPNG() {
 function notes(p) {
   const L = [];
   L.push('线稿立体工坊 · 打印说明', '');
-  for (const m of built.meshes) L.push(`${m.file}  —  ${m.name}，${dimsOf(m.manifold).map(v => v.toFixed(1)).join(' × ')} mm`);
+  for (const m of built.meshes) L.push(`${m.file}  —  ${m.name}，${partDims(m).map(v => v.toFixed(1)).join(' × ')} mm`);
   L.push('');
   if (p.base === 'separate') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
   if (p.base === 'onepiece') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');
@@ -564,7 +572,7 @@ function notes(p) {
 }
 $('dlZip').addEventListener('click', async () => {
   if (!built) return; const p = P();
-  const files = built.meshes.map(m => ({ name: m.file, data: stlBinary(m.manifold) }));
+  const files = built.meshes.map(m => Object.assign({ name: m.file }, stlParts(m)));
   const enc = new TextEncoder();
   files.push({ name: p.kind === 'litho' ? 'backlit-preview.png' : 'lineart.png', data: new Uint8Array(await (await lineartPNG()).arrayBuffer()) });
   if (view.ok()) { const was = tab; if (tab !== '3d') showTab('3d'); await frame(); files.push({ name: 'preview.png', data: new Uint8Array(await (await view.snapshot()).arrayBuffer()) }); if (was !== '3d') showTab(was); }
