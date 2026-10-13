@@ -195,10 +195,91 @@ function countOpen(he) { let k = 0; for (let i = 0; i < he.length; i++) if (he[i
 function smoothTol(p) { return 0.04 * Math.pow(0.1, Number.isFinite(p.smoothDetail) ? p.smoothDetail : 0.45); }
 
 // thickness of the flat slab the panel occupies (frame, edge in the stand)
-function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }
+function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }   // stepped levels are rounded to layers, within a layer of this
+
+// ===== Stepped lithophane (printable lines) =====
+// Thickness is quantised into a few levels. Each level is a flat terrace with vertical walls, every terrace
+// and every gap at least one printable line wide (from the printer settings), and every height a whole
+// number of layers — so ridges come out as real walls instead of the sharp-topped, wide-footed ridges a
+// smooth height map makes. Built from 2D outlines extruded per level, like the cut-out and plaque models.
+function buildSteppedPanel(gray, W, H, p, widthMM) {
+  const pr = p.printer || { h: 0.2, minLine: 0.84, minGap: 0.4 };
+  const px = Math.max(0.05, Math.min(0.15, pr.minLine / 6));          // analysis pixel (mm)
+  const w = Math.max(16, Math.round(widthMM / px) + 1), h = Math.max(16, Math.round((w - 1) * H / W) + 1), sc = widthMM / (w - 1);
+  const k = (w - 1) / Math.max(1, W - 1), g = k < 1 ? gaussBlur(gray, W, H, 0.5 / k) : gray;
+  const N = Math.max(2, Math.min(Math.round(p.levels || 8), Math.round((p.tMax - p.tMin) / pr.h) + 1));   // no more levels than layers
+  // level thicknesses, whole layers, strictly increasing
+  const T = []; for (let i = 0; i < N; i++) { const t = p.tMin + (p.tMax - p.tMin) * i / (N - 1); T.push(Math.max(2 * pr.h, Math.round(t / pr.h) * pr.h)); }
+  for (let i = 1; i < N; i++) if (T[i] <= T[i - 1] + 1e-6) T[i] = T[i - 1] + pr.h;
+  // darkness → level index
+  const lev = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(H - 1, y * (H - 1) / Math.max(1, h - 1)), y0 = Math.floor(sy), y1 = Math.min(H - 1, y0 + 1), fy = sy - y0;
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(W - 1, x * (W - 1) / Math.max(1, w - 1)), x0 = Math.floor(sx), x1 = Math.min(W - 1, x0 + 1), fx = sx - x0;
+      const v = (g[y0 * W + x0] * (1 - fx) + g[y0 * W + x1] * fx) * (1 - fy) + (g[y1 * W + x0] * (1 - fx) + g[y1 * W + x1] * fx) * fy;
+      const dark = Math.pow(Math.min(1, Math.max(0, 1 - v / 255)), p.gamma);
+      lev[y * w + x] = Math.min(N - 1, Math.round(dark * (N - 1)));
+    }
+  }
+  const framePx = p.frame > 0 ? Math.round(Math.min(p.frame, widthMM / 4, (h - 1) * sc / 4) / sc) : 0;
+  // cumulative masks (level ≥ i), cleaned so every raised part and every gap is printable, and kept nested
+  const rLine = Math.max(1, Math.round(pr.minLine / 2 / sc)), rGap = Math.max(1, Math.round(pr.minGap / 2 / sc));
+  const masks = [null]; let prev = null;
+  for (let i = 1; i < N; i++) {
+    let m = new Uint8Array(w * h); for (let j = 0; j < m.length; j++) m[j] = lev[j] >= i ? 1 : 0;
+    m = dilate(erode(m, w, h, rLine), w, h, rLine);                  // drop parts thinner than one printable line
+    m = erode(dilate(m, w, h, rGap), w, h, rGap);                    // close gaps narrower than the nozzle
+    if (prev) for (let j = 0; j < m.length; j++) m[j] &= prev[j];
+    masks.push(m); prev = m;
+  }
+  // per-pixel final level (for the back-lit preview), frame at full thickness
+  const Zq = new Float32Array(w * h);
+  for (let j = 0; j < Zq.length; j++) { let L = 0; for (let i = N - 1; i >= 1; i--) if (masks[i][j]) { L = i; break; } Zq[j] = T[L]; }
+  // geometry: each exact level region is a slab with vertical sides
+  //   normal: 0 … T_i      face forward (flip): K − 2·T_i … K − T_i  (same thickness, inverted front relief)
+  const K = 2 * T[N - 1], depth = p.flip ? K - T[0] : T[N - 1], solids = [];
+  const sm = Math.max(0.6, 0.04 / sc), Wm = (w - 1) * sc, Hm = (h - 1) * sc, PAD = 3;
+  const frameRect = rect(0, 0, Wm, Hm);
+  // smooth outline of a mask; the mask is padded by repeating its edge so outlines run past the panel border,
+  // then clipped to the panel — no hairline strips along the edges
+  const outline = m => {
+    const pw = w + 2 * PAD, ph = h + 2 * PAD, q = new Float32Array(pw * ph);
+    for (let y = 0; y < ph; y++) { const sy = Math.min(h - 1, Math.max(0, y - PAD)); for (let x = 0; x < pw; x++) q[y * pw + x] = m[sy * w + Math.min(w - 1, Math.max(0, x - PAD))]; }
+    const f = gaussBlur(q, pw, ph, sm), cs = fieldToCrossSection(f, pw, ph, sc);
+    return cs ? G(G(cs.translate([-PAD * sc, -PAD * sc])).intersect(frameRect)) : null;
+  };
+  if (!p.flip) {
+    // terraces stacked from the back: base plate 0…T₀, then every "level ≥ i" area extruded 0…Tᵢ
+    solids.push(G(frameRect.extrude(T[0])));
+    for (let i = 1; i < N; i++) { const cs = outline(masks[i]); if (cs && cs.area() > 0) solids.push(G(cs.extrude(T[i]))); }
+  } else {
+    // face forward: front Fᵢ = K − Tᵢ, back Bᵢ = K − 2Tᵢ (thickness Tᵢ, front relief inverted).
+    // Both fall as the level rises, so with Lᵢ = "level ≤ i":  solid = ⋃ Lᵢ×[0, Fᵢ]  minus  ⋃ Lᵢ×[−1, Bᵢ].
+    // Each Lᵢ outline is used for both, so the front and back steps line up exactly.
+    const add = [G(frameRect.extrude(K - T[N - 1]))], cut = [];
+    for (let i = 0; i < N - 1; i++) {
+      const comp = new Uint8Array(w * h); for (let j = 0; j < comp.length; j++) comp[j] = masks[i + 1][j] ? 0 : 1;
+      const cs = outline(comp); if (!cs || !(cs.area() > 0)) continue;
+      add.push(G(cs.extrude(K - T[i])));
+      cut.push(G(G(cs.extrude(K - 2 * T[i] + 1)).translate([0, 0, -1])));
+    }
+    solids.push(G(G(MF.Manifold.union(add)).subtract(G(MF.Manifold.union(cut)))));
+  }
+  let m = G(MF.Manifold.union(solids));
+  if (framePx > 0) {
+    const f = framePx * sc;
+    const ring = G(G(rect(0, 0, Wm, Hm).subtract(rect(f, f, Wm - f, Hm - f))).extrude(depth));
+    m = G(MF.Manifold.union(m, ring));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < framePx || y < framePx || x > w - 1 - framePx || y > h - 1 - framePx) Zq[y * w + x] = T[N - 1];
+  }
+  const tri = { grid: true, stepped: true, levels: N, T, Z: Zq, w, h, widthMM, pts: [], tris: [] };
+  return { panel: m, tri, hmm: (h - 1) * sc };
+}
 
 function buildLithoPanel(gray, W, H, p, widthMM) {
   p = Object.assign({}, p, { widthMM });
+  if (p.lithoStep) return buildSteppedPanel(gray, W, H, p, widthMM);
   const L = lithoThickness(gray, W, H, p);
   const D = lithoBulge(gray, W, H, L, p, widthMM);
   const sc = widthMM / (L.w - 1), hmm = (L.h - 1) * sc;

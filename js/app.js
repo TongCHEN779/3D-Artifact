@@ -11,7 +11,7 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  layer: v => (+v).toFixed(2) + ' mm', gridMM: v => (+v).toFixed(2) + ' mm', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
+  layer: v => (+v).toFixed(2) + ' mm', gridMM: v => (+v).toFixed(2) + ' mm', levels: v => v + ' 级', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 // facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
 const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
@@ -19,7 +19,7 @@ const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n /
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4,
+  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4, levels: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
@@ -88,7 +88,7 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -104,8 +104,10 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth || p.lithoGrid; $('rowSmooth').hidden = !p.lithoSmooth; $('rowGrid').hidden = !p.lithoGrid; }
-  if (litho && p.lithoGrid) {
+  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth || p.lithoGrid || p.lithoStep; $('rowLevels').hidden = !p.lithoStep; $('rowSmooth').hidden = !p.lithoSmooth; $('rowGrid').hidden = !p.lithoGrid; }
+  if (litho && p.lithoStep) {
+    $('facetHint').textContent = `阶梯：把厚度分成 ${p.levels} 级，每一级是平台、级与级之间是竖直的墙（上下一样粗）。按打印机设置，每个凸起和缝隙至少 ${p.printer.minLine.toFixed(2)} / ${p.printer.minGap.toFixed(2)} mm 宽，每级高度取整到 ${p.printer.h.toFixed(2)} mm 层高——比细线更细的细节会被去掉，换来每一处都能打出来。级数越多越接近照片的层次；明暗起伏在阶梯模式下不起作用。`;
+  } else if (litho && p.lithoGrid) {
     const nx = Math.round(p.width / p.gridMM) + 1, nv = nx * nx;   // square estimate
     $('facetHint').textContent = `规则网格：每 ${p.gridMM.toFixed(2)} mm 一个点，约 ${(nv / 1e4).toFixed(0)} 万个点、${(2 * nv / 1e4).toFixed(0)} 万个三角面（正方形图案估算），STL 约 ${Math.round(nv * 4 * 50 / 1e6)} MB。点分布均匀、表面最平顺，和大多数透光浮雕软件一样；间距小于喷嘴的一半（${(p.printer.d / 2).toFixed(2)} mm）后打印出来差别不大。`;
   } else if (litho && p.lithoSmooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
@@ -436,10 +438,11 @@ function updateStatus(p) {
   add(`图案 <b>${(W * s).toFixed(0)} × ${(H * s).toFixed(0)} mm</b>`);
   if (p.kind === 'litho' && cache.litho) {
     const t = cache.litho.tri;
-    add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
+    if (t.stepped) add(`<b>${t.levels}</b> 级阶梯 · 级高 <b>${t.T.map(v => v.toFixed(1)).join(' / ')}</b> mm`);
+    else add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
     add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
     if (p.flip) add(`总厚 <b>${(2 * p.tMax - p.tMin).toFixed(1)} mm</b>（正面凸起）`);
-    if (p.bulge > 0) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
+    if (p.bulge > 0 && !p.lithoStep) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
     if (built) add(`模型 <b>${built.dims.map(v => v.toFixed(0)).join(' × ')} mm</b>`);
     return;
   }
