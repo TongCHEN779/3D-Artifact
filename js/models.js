@@ -24,7 +24,7 @@ function fieldToCrossSection(field, W, H, s) {
 }
 
 // ---- text ----
-function textCrossSection(str, font, heightMM) {
+function textCrossSection(str, font, heightMM, minStroke = 0) {
   if (!str || !font) return null;
   const path = font.getPath(str, 0, 0, 100);
   const rings = []; let cur = null, lx = 0, ly = 0;
@@ -41,7 +41,14 @@ function textCrossSection(str, font, heightMM) {
   for (const r of good) for (const [x, y] of r) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y); }
   const k = heightMM / (maxy - miny), cx = (minx + maxx) / 2, cy = (miny + maxy) / 2;
   const scaled = good.map(r => r.map(([x, y]) => [(x - cx) * k, (y - cy) * k]));
-  return { cs: G(new MF.CrossSection(scaled, 'NonZero')), w: (maxx - minx) * k, h: heightMM };
+  let cs = G(new MF.CrossSection(scaled, 'NonZero'));
+  // average stroke width ≈ 2·area / outline length; embolden thin fonts so strokes are at least one extrusion wide
+  if (minStroke > 0) {
+    let per = 0; for (const r of scaled) for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; per += Math.hypot(b[0] - a[0], b[1] - a[1]); }
+    const sw = 2 * cs.area() / Math.max(per, 1e-6);
+    if (sw < minStroke) cs = G(cs.offset((minStroke - sw) / 2, 'Round'));
+  }
+  return { cs, w: (maxx - minx) * k, h: heightMM };
 }
 
 function rect(x0, y0, x1, y1) { return G(new MF.CrossSection([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]], 'Positive')); }
@@ -62,7 +69,7 @@ function buildModels(art, p, fonts, litho) {
     const M = 6;
     let bottomExtra = 0, plaqueText = null;
     if (!standing && p.text1) {
-      plaqueText = textCrossSection(p.text1, font, p.textH);
+      plaqueText = textCrossSection(p.text1, font, p.textH, p.printer ? p.printer.minStroke : 0);
       if (plaqueText) bottomExtra = p.textH + 3;
     }
     const x0 = bb.min[0] - M, x1 = bb.max[0] + M, y0 = bb.min[1] - M - bottomExtra, y1 = bb.max[1] + M;
@@ -100,7 +107,7 @@ function buildModels(art, p, fonts, litho) {
   const th = Math.min(p.textH, H - 0.8);
   if (p.textH > H - 0.8 && (p.text1 || p.text2)) warnings.push(`底座侧面只有 ${H} mm 高，字高已缩为 ${th.toFixed(1)} mm。`);
   for (const [str, back] of [[p.text1, false], [p.text2, true]]) {
-    const t = textCrossSection(str, font, th);
+    const t = textCrossSection(str, font, th, p.printer ? p.printer.minStroke : 0);
     if (!t) continue;
     if (t.w > L - 4) warnings.push(`“${str}” 比底座长，建议缩小字高或缩短文字。`);
     let cut = G(G(t.cs.extrude(2 * p.textD, 0, 0, [1, 1], true)).rotate([90, 0, back ? 180 : 0]));
@@ -139,7 +146,7 @@ function lithoPrintAids(panel, p, warnings) {
   const { Manifold } = MF;
   const b = panel.boundingBox(), x0 = b.min[0], x1 = b.max[0], y0 = b.min[1], Hp = b.max[1] - b.min[1], W = x1 - x0;
   const T = lithoDepth(p), F = Math.max(12, Math.min(25, Hp * 0.18)), Hf = Math.min(Hp * 0.6, 70);
-  const gap = 0.3, ft = 1.6, brimH = 0.4, brimOut = 6;
+  const pr = p.printer || { h: 0.2, lineW: 0.42 }, gap = Math.max(0.3, pr.h * 1.5), ft = Math.max(1.6, 3 * pr.lineW), brimH = 2 * pr.h, brimOut = 6, tabW = Math.max(1, 2 * pr.lineW);
   const cub = (ax, ay, az, bx, by, bz) => G(G(Manifold.cube([bx - ax, by - ay, bz - az])).translate([ax, ay, az]));
   const parts = [panel, cub(x0 - gap - ft - brimOut, y0, -F - 4, x1 + gap + ft + brimOut, y0 + brimH, T + F + 4)];
   for (const side of [-1, 1]) {
@@ -148,14 +155,12 @@ function lithoPrintAids(panel, p, warnings) {
     parts.push(G(Manifold.hull(pts)));
     // tabs bridge the 0.3 mm gap; they reach 0.3 mm into the panel's (flat) side edge
     const ta = side < 0 ? xb - 0.05 : x1 - 0.3, tb = side < 0 ? x0 + 0.3 : xa + 0.05;
-    for (let y = y0 + 3; y < y0 + Hf - 2; y += 8) parts.push(cub(ta, y, 0.4, tb, y + 1, Math.max(0.8, T - 0.4)));
+    for (let y = y0 + 3; y < y0 + Hf - 2; y += 8) parts.push(cub(ta, y, 0.4, tb, y + tabW, Math.max(0.8, T - 0.4)));
   }
   let m = G(Manifold.union(parts));
   m = G(m.rotate([90, 0, 0]));
   const mb = m.boundingBox();
   m = G(m.translate([-(mb.min[0] + mb.max[0]) / 2, -(mb.min[1] + mb.max[1]) / 2, -mb.min[2]]));
-  const d = dimsOf(m), big = Math.max(d[0], d[1]);
-  if (big > 180 || d[2] > 180) warnings.push(`竖打时占用 ${d[0].toFixed(0)} × ${d[1].toFixed(0)} mm、高 ${d[2].toFixed(0)} mm，超过 180 mm 的小型打印机（如 A1 mini）放不下，可以缩小图案宽度。`);
   return m;
 }
 const PANEL_NAME = { cutout: '镂空剪影', plaque: '浮雕牌', litho: '透光浮雕' };

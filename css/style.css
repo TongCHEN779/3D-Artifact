@@ -42,6 +42,7 @@ header.top p { margin: 0; color: var(--muted); max-width: 60ch; }
 .step h2 .n { font-family: var(--font-mono); font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--ink); color: var(--panel); flex: none; }
 .row { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .row label { color: var(--muted); font-size: 13px; }
+.bed { display: flex; align-items: center; gap: 4px; font-size: 12px; } .bed .num { width: 4.6em; }
 .row .num { width: 6.6em; font-family: var(--font-mono); font-size: 12px; text-align: right; padding: 3px 5px; border: 1px solid var(--line, #ccc); border-radius: 6px; background: transparent; color: inherit; font-variant-numeric: tabular-nums; }
 .row output { font-family: var(--font-mono); font-size: 12px; min-width: 4.2em; text-align: right; font-variant-numeric: tabular-nums; }
 .row.two { grid-template-columns: 7.5em minmax(0, 1fr); }

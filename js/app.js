@@ -11,7 +11,7 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
+  layer: v => (+v).toFixed(2) + ' mm', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 // facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
 const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
@@ -21,6 +21,7 @@ const stageOf = {
   islands: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
   facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4,
   thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
+  printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
 const seg = {};
@@ -47,12 +48,47 @@ $('facetsNum').addEventListener('change', () => {
 document.querySelectorAll('input[type=checkbox], select').forEach(inp => inp.addEventListener('change', () => onChange(inp.id)));
 document.querySelectorAll('input[type=text]').forEach(inp => inp.addEventListener('input', () => onChange(inp.id)));
 
+// ---------- printer ----------
+const PRINTERS = { a1mini: [180, 180, 180], a1: [256, 256, 256], mk4: [250, 210, 220], ender3: [220, 220, 250] };
+const PRINTER_IDS = ['printer', 'bedX', 'bedY', 'bedZ', 'nozzle', 'layer'];
+try { const s = JSON.parse(localStorage.getItem('printer') || 'null'); if (s) { for (const k of PRINTER_IDS) if (s[k] != null && $(k)) $(k).value = s[k]; if (s.walls) setSeg('walls', s.walls); } } catch (e) {}
+if ($('layer')) document.querySelector('output[for=layer]').textContent = fmt.layer($('layer').value);
+['bedX', 'bedY', 'bedZ'].forEach(id => $(id).addEventListener('change', () => onChange(id)));
+function savePrinter() { try { const s = { walls: seg.walls }; for (const k of PRINTER_IDS) s[k] = $(k).value; localStorage.setItem('printer', JSON.stringify(s)); } catch (e) {} }
+// What the printer can actually make, derived from nozzle, layer height and wall count.
+function printerRules() {
+  const d = +$('nozzle').value || 0.4, h = +$('layer').value || 0.2, walls = +seg.walls || 2;
+  const pid = $('printer').value, bed = pid === 'custom' ? [+$('bedX').value || 200, +$('bedY').value || 200, +$('bedZ').value || 200] : PRINTERS[pid];
+  const lineW = Math.round(d * 1.05 * 100) / 100;                       // usual extrusion width
+  return { d, h, walls, bed, lineW,
+    minLine: Math.round((walls >= 2 ? 2 * lineW : 1.1 * d) * 100) / 100, // narrowest line that prints solid
+    minGap: d,                                                             // narrower gaps close up
+    minStroke: lineW };                                                    // text strokes
+}
+
 function P() {
+  const p = rawP(), r = printerRules(), adj = [];
+  // apply every rule; report only the ones that matter for the chosen model type
+  const up = (key, v, label, show) => { if (v > p[key] + 1e-9) { if (show) adj.push(`${label} ${(+p[key]).toFixed(2)} → ${v.toFixed(2)} mm`); p[key] = v; } };
+  const snap = (key, label, show) => {   // whole layers, at least two
+    const v = Math.max(2 * r.h, Math.round(p[key] / r.h) * r.h);
+    if (Math.abs(v - p[key]) > 1e-6) { if (show) adj.push(`${label} ${(+p[key]).toFixed(2)} → ${v.toFixed(2)} mm（按层高取整）`); p[key] = v; }
+  };
+  const K = p.kind, lines = K !== 'litho';
+  up('minWidth', r.minLine, '最细线宽', lines); up('lineWidth', p.minWidth, '线宽', lines && p.smooth);
+  snap('thick', '剪影厚度', K === 'cutout'); snap('plateT', '底板厚度', K === 'plaque'); snap('reliefH', '线条凸起', K === 'plaque');
+  up('tMin', Math.round(2 * r.d * 100) / 100, '透光最薄', !lines); if (p.tMax < p.tMin + 0.4) p.tMax = p.tMin + 0.4;
+  if (p.frame > 0) up('frame', 2 * r.lineW, '边框宽度', !lines);
+  snap('baseH', '底座高度', p.base !== 'none'); snap('textD', '刻字深度', !!(p.text1 || p.text2));
+  p.printer = r; p.minGap = r.minGap; p.adjusted = adj;
+  return p;
+}
+function rawP() {
   const n = id => +$(id).value;
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: $('smooth').checked, lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, smooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -68,9 +104,9 @@ function syncUI() {
   document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = !litho;
-  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.smooth; $('rowSmooth').hidden = !p.smooth; }
-  if (litho && p.smooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
-  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。0.4 mm 喷嘴能表现的最小细节约 0.3 mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
+  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth; $('rowSmooth').hidden = !p.lithoSmooth; }
+  if (litho && p.lithoSmooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
+  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。${p.printer.d} mm 喷嘴能表现的最小细节约 ${(p.printer.d * 0.75).toFixed(2)} mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
   $('baseMore').hidden = p.base === 'none';
@@ -82,10 +118,15 @@ function syncUI() {
   $('text1').disabled = textOff;
   $('textNote').textContent = textOff ? (litho ? '透光浮雕本身不刻字。选择底座后，可以把字刻在底座上。' : '平放的剪影没有地方刻字。选择底座，或改成浮雕牌（字会凸起在牌子底部）。')
     : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里。';
+  $('rowBed').hidden = $('printer').value !== 'custom';
+  const r = p.printer;
+  $('printerNote').textContent = `按 ${r.d} mm 喷嘴、${r.h.toFixed(2)} mm 层高：线条至少 ${r.minLine.toFixed(2)} mm 宽（${r.walls} 圈墙），小于 ${r.minGap} mm 的缝隙会被填上，文字笔画至少 ${r.minStroke.toFixed(2)} mm，高度都取整到层高。` +
+    (p.adjusted.length ? ' 已自动调整：' + p.adjusted.join('；') + '。' : ' 当前设置都能打印。');
   if (typeof drawLegend === "function") drawLegend();
 }
 
 function onChange(id) {
+  if (PRINTER_IDS.includes(id) || id === 'walls') savePrinter();
   syncUI();
   if (id === 'brush') { if (seg.brush !== 'off') showTab('line'); drawLine(); return; }
   if (id === 'brushSize') return;
@@ -337,6 +378,13 @@ function stage3(p) {
   const fixed = islands === 'keep' ? mask : resolveIslands(mask, W, H, rMin, bridgeR, islands, {});
   for (let i = 0; i < mask.length; i++) { if (fixed[i] && !mask[i]) field[i] = 1; if (!fixed[i] && mask[i]) field[i] = 0; }
   mask = fixed;
+  // gaps narrower than the nozzle can't be printed open — fill them so the model matches what will print
+  const rg = Math.ceil(p.minGap / (2 * s) - 0.25);
+  if (rg >= 1) {
+    const closed = erode(dilate(mask, W, H, rg), W, H, rg);
+    let filled = 0; for (let i = 0; i < mask.length; i++) if (closed[i] && !mask[i]) { mask[i] = 1; field[i] = Math.max(field[i], 0.75); filled++; }
+    stats.gapsFilled = filled * s * s;
+  }
   const pieces = label(opening(mask, W, H, rMin), W, H).n;
   Object.assign(cache, { field, mask, pieces, rMin, stats, kind: p.kind });
 }
@@ -367,6 +415,11 @@ async function stage4(p) {
     else { let ymin = Infinity; for (let i = 1; i < pos.length; i += 3) ymin = Math.min(ymin, pos[i]); it.tint = v => pos[v * 3 + 1] < ymin + p.reliefH - 0.05; }
   }
   view.show(show);
+  const bed = p.printer.bed;
+  for (const m of built.parts) {
+    const d = dimsOf(m.manifold), [a1, b1] = [Math.max(d[0], d[1]), Math.min(d[0], d[1])], [a2, b2] = [Math.max(bed[0], bed[1]), Math.min(bed[0], bed[1])];
+    if (a1 > a2 || b1 > b2 || d[2] > bed[2]) built.warnings.push(`${m.file}（${d.map(v => v.toFixed(0)).join(' × ')} mm）超出打印机范围 ${bed.join(' × ')} mm，请缩小图案宽度或底座外伸。`);
+  }
   setWarnings(built.warnings);
   updateStatus(p);
   renderFiles(p);
@@ -390,7 +443,8 @@ function updateStatus(p) {
   }
   if (cache.kind === 'plaque') add('<span class="pill ok">线条都在底板上</span>');
   else add(pieces === 1 ? '<span class="pill ok">线条连成一整块</span>' : `<span class="pill warn">${pieces} 块分离</span>`);
-  add(`最细处 ≥ <b>${((2 * cache.rMin + 1) * s).toFixed(1)} mm</b>`);
+  add(`最细处 ≥ <b>${((2 * cache.rMin + 1) * s).toFixed(2)} mm</b>`);
+  if (stats && stats.gapsFilled > 0.05) add(`填上 <b>${stats.gapsFilled.toFixed(1)} mm²</b> 过窄缝隙`);
   if (stats && stats.bridges) add(`补了 <b>${stats.bridges}</b> 处连接`);
   if (stats && stats.dropped) add(`删了 <b>${stats.dropped}</b> 条孤立线`);
   if (built) add(`模型 <b>${built.dims.map(v => v.toFixed(0)).join(' × ')} mm</b>`);
@@ -499,10 +553,12 @@ function notes(p) {
   if (p.base === 'none') L.push('平放打印，不需要支撑。');
   if (p.kind === 'plaque') L.push(`浮雕牌：打到 ${p.plateT} mm 高度时换色，底板和线条就是两种颜色。`);
   if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
-  if (p.kind === 'litho' && p.printAid && p.base !== 'onepiece') L.push(`透光浮雕 STL 已经是竖立的打印姿态：底边朝下，带 0.4 mm 裙边和两侧三角支脚（与浮雕隔 0.3 mm，每 8 mm 一个小连接点）。直接切片，不用再加支撑或 brim；打完撕掉裙边、掰掉支脚，用刀修平底边再插进底座。建议 0.12–0.16 mm 层高、100% 填充、外墙速度放慢，床温略高一点（PLA 60–65 °C）帮助粘牢。`);
+  if (p.kind === 'litho' && p.printAid && p.base !== 'onepiece') L.push(`透光浮雕 STL 已经是竖立的打印姿态：底边朝下，带 两层厚的裙边和两侧三角支脚（与浮雕隔 0.3 mm，每 8 mm 一个小连接点）。直接切片，不用再加支撑或 brim；打完撕掉裙边、掰掉支脚，用刀修平底边再插进底座。建议 0.12–0.16 mm 层高、100% 填充、外墙速度放慢，床温略高一点（PLA 60–65 °C）帮助粘牢。`);
   if (p.kind === 'litho' && p.flip) L.push(`正面凸起：两面都有起伏（背面是反向浮雕，朝灯摆放），请竖着打印（底边朝下），不需要支撑。`);
   if (p.kind === 'litho' && p.bulge > 0) L.push(`曲面透光：背面跟着正面一起鼓起 ${p.bulge} mm，厚度处处不变。推荐竖着打印（底边朝下，不需要支撑）；平放打印时背面朝下需要少量支撑。`);
-  else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(1)} mm，用 0.4 mm 喷嘴可以打印。`);
+  else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(2)} mm，按 ${p.printer.d} mm 喷嘴、${p.printer.walls} 圈墙生成。`);
+  L.push(`打印机设置：${p.printer.d} mm 喷嘴，${p.printer.h.toFixed(2)} mm 层高，打印范围 ${p.printer.bed.join(' × ')} mm。模型里所有高度都是层高的整数倍，切片时请用同样的层高。`);
+  if (p.adjusted.length) L.push('为适配打印机自动调整：' + p.adjusted.join('；') + '。');
   if (p.text1 || p.text2) L.push('刻字较小，建议层高 0.1–0.12 mm。');
   return L.join('\r\n');
 }

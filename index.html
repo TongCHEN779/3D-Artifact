@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@700&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="css/style.css?v=65d28429">
+<link rel="stylesheet" href="css/style.css?v=1fc47083">
 </head>
 <body>
 <div class="wrap">
@@ -91,8 +91,27 @@
         </details>
       </section>
 
+      <section class="step" aria-labelledby="sP">
+        <h2 id="sP"><span class="n">4</span>打印机</h2>
+        <div class="row two"><label for="printer">机型</label>
+          <select id="printer">
+            <option value="a1mini">Bambu Lab A1 mini（180 mm）</option>
+            <option value="a1">Bambu Lab A1 / P1 / X1（256 mm）</option>
+            <option value="mk4">Prusa MK4 / Core One（250 × 210 mm）</option>
+            <option value="ender3">Creality Ender-3（220 mm）</option>
+            <option value="custom">自定义</option>
+          </select></div>
+        <div class="row two" id="rowBed" hidden><label>打印范围</label><span class="bed"><input type="number" id="bedX" class="num" min="50" max="1000" value="200" aria-label="宽">×<input type="number" id="bedY" class="num" min="50" max="1000" value="200" aria-label="深">×<input type="number" id="bedZ" class="num" min="50" max="1000" value="200" aria-label="高"> mm</span></div>
+        <div class="row two"><label for="nozzle">喷嘴</label>
+          <select id="nozzle"><option value="0.2">0.2 mm</option><option value="0.4" selected>0.4 mm</option><option value="0.6">0.6 mm</option><option value="0.8">0.8 mm</option></select></div>
+        <div class="row"><label for="layer">层高</label><input type="range" id="layer" min="0.04" max="0.4" step="0.02" value="0.2"><output for="layer"></output></div>
+        <div class="row two"><label>最少墙线</label>
+          <div class="seg" data-name="walls"><button type="button" data-v="1">1 圈</button><button type="button" data-v="2" aria-pressed="true">2 圈（更牢）</button></div></div>
+        <p class="hint" id="printerNote"></p>
+      </section>
+
       <section class="step" aria-labelledby="s4">
-        <h2 id="s4"><span class="n">4</span>刻字</h2>
+        <h2 id="s4"><span class="n">5</span>刻字</h2>
         <div class="row two"><label for="text1" id="t1label">底座正面</label><input type="text" id="text1" placeholder="例如 Anna &amp; Ben" maxlength="60"></div>
         <div class="row two" id="rowT2"><label for="text2">底座背面</label><input type="text" id="text2" placeholder="例如 12 June 2025" maxlength="60"></div>
         <div class="row two"><label for="font">字体</label>
@@ -105,7 +124,7 @@
       </section>
 
       <section class="step" aria-labelledby="s5">
-        <h2 id="s5"><span class="n">5</span>导出</h2>
+        <h2 id="s5"><span class="n">6</span>导出</h2>
         <div class="files" id="fileList"></div>
         <div class="btns">
           <button class="btn primary" id="dlZip" type="button">下载全部（ZIP）</button>
@@ -143,8 +162,8 @@
 <script src="vendor/opentype/opentype.min.js"></script>
 <script src="js/raster.js?v=46bcd837"></script>
 <script src="js/lineart.js?v=7d43b09c"></script>
-<script src="js/models.js?v=aab1a741"></script>
-<script src="js/litho.js?v=a9edee70"></script>
-<script src="js/app.js?v=acf20ba0"></script>
+<script src="js/models.js?v=ba06fb6f"></script>
+<script src="js/litho.js?v=f1d4afbd"></script>
+<script src="js/app.js?v=7ff51f83"></script>
 </body>
 </html>
