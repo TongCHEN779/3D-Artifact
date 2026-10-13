@@ -43,7 +43,7 @@
             <option value="ender3">Creality Ender-3（220 mm）</option>
             <option value="custom">自定义</option>
           </select></div>
-          <div class="row two" id="rowBed" hidden><label>打印范围</label><span class="bed"><input type="number" id="bedX" class="num" min="50" max="1000" value="200" aria-label="宽">×<input type="number" id="bedY" class="num" min="50" max="1000" value="200" aria-label="深">×<input type="number" id="bedZ" class="num" min="50" max="1000" value="200" aria-label="高"> mm</span></div>
+          <div class="row two" id="rowBed" data-show="$('printer').value === 'custom'"><label>打印范围</label><span class="bed"><input type="number" id="bedX" class="num" min="50" max="1000" value="200" aria-label="宽">×<input type="number" id="bedY" class="num" min="50" max="1000" value="200" aria-label="深">×<input type="number" id="bedZ" class="num" min="50" max="1000" value="200" aria-label="高"> mm</span></div>
           <div class="row two"><label for="nozzle">喷嘴</label>
             <select id="nozzle"><option value="0.2">0.2 mm</option><option value="0.4" selected>0.4 mm</option><option value="0.6">0.6 mm</option><option value="0.8">0.8 mm</option></select></div>
           <div class="row"><label for="layer">层高</label><input type="range" id="layer" min="0.04" max="0.4" step="0.02" value="0.2"><output for="layer"></output></div>
@@ -60,21 +60,21 @@
           <div class="group"><div class="gtitle">识别</div>
             <div class="row two"><label>阈值方式</label>
               <div class="seg" data-name="thMode"><button type="button" data-v="auto" aria-pressed="true">自动</button><button type="button" data-v="manual">手动</button><button type="button" data-v="adaptive">照片</button></div></div>
-            <div class="row" id="rowTh"><label for="threshold">灵敏度</label><input type="range" id="threshold" min="20" max="250" value="190"><output for="threshold"></output></div>
-            <div class="row" id="rowC" hidden><label for="adaptC">细节</label><input type="range" id="adaptC" min="2" max="40" value="10"><output for="adaptC"></output></div>
+            <div class="row" id="rowTh" data-show="p.thMode !== 'adaptive'"><label for="threshold">灵敏度</label><input type="range" id="threshold" min="20" max="250" value="190"><output for="threshold"></output></div>
+            <div class="row" id="rowC" data-show="p.thMode === 'adaptive'"><label for="adaptC">细节</label><input type="range" id="adaptC" min="2" max="40" value="10"><output for="adaptC"></output></div>
             <label class="check"><input type="checkbox" id="invert">反相（浅色线条、深色背景时勾选）</label>
           </div>
           <div class="group"><div class="gtitle">线条</div>
             <div class="row two"><label>处理方式</label>
               <div class="seg" data-name="lineMode"><button type="button" data-v="keep" aria-pressed="true">保持原样</button><button type="button" data-v="uniform">统一粗细</button></div></div>
-            <div class="row" id="rowEdge"><label for="edgeSmooth">边缘平滑</label><input type="range" id="edgeSmooth" min="0" max="0.4" step="0.02" value="0.1"><output for="edgeSmooth"></output></div>
-            <div class="row" id="rowLW" hidden><label for="lineWidth">线宽</label><input type="range" id="lineWidth" min="0.6" max="2.5" step="0.05" value="0.9"><output for="lineWidth"></output></div>
-            <div class="row" id="rowSm" hidden><label for="smoothness">平滑程度</label><input type="range" id="smoothness" min="0.1" max="1.5" step="0.05" value="0.6"><output for="smoothness"></output></div>
+            <div class="row" id="rowEdge" data-show="!p.smooth"><label for="edgeSmooth">边缘平滑</label><input type="range" id="edgeSmooth" min="0" max="0.4" step="0.02" value="0.1"><output for="edgeSmooth"></output></div>
+            <div class="row" id="rowLW" data-show="p.smooth"><label for="lineWidth">线宽</label><input type="range" id="lineWidth" min="0.6" max="2.5" step="0.05" value="0.9"><output for="lineWidth"></output></div>
+            <div class="row" id="rowSm" data-show="p.smooth"><label for="smoothness">平滑程度</label><input type="range" id="smoothness" min="0.1" max="1.5" step="0.05" value="0.6"><output for="smoothness"></output></div>
             <p class="hint" id="lineHint"></p>
           </div>
           <details class="more"><summary>清理</summary>
             <div class="row"><label for="speck">去除碎点</label><input type="range" id="speck" min="0" max="4" step="0.1" value="0.4"><output for="speck"></output></div>
-            <div class="row two"><label>孤立线条</label>
+            <div class="row two" id="rowIslands" data-show="p.kind === 'cutout'"><label>孤立线条</label>
               <div class="seg" data-name="islands"><button type="button" data-v="connect" aria-pressed="true">接到旁边</button><button type="button" data-v="remove">删除</button></div></div>
             <div class="row"><label for="minWidth">最细线宽</label><input type="range" id="minWidth" min="0.4" max="1.5" step="0.05" value="0.7"><output for="minWidth"></output></div>
             <p class="hint">最细线宽不会低于打印机设置允许的值。</p>
@@ -82,9 +82,9 @@
           <details class="more" id="brushMore"><summary>手动修改</summary>
             <div class="row two"><label>笔刷</label>
               <div class="seg" data-name="brush"><button type="button" data-v="off" aria-pressed="true">关</button><button type="button" data-v="erase">擦除</button><button type="button" data-v="draw">补画</button></div></div>
-            <div class="row" id="rowBrush" hidden><label for="brushSize">笔刷大小</label><input type="range" id="brushSize" min="0.5" max="8" step="0.5" value="2"><output for="brushSize"></output></div>
-            <div class="btns" id="brushBtns" hidden><button class="btn" type="button" id="undoBrush">撤销一笔</button><button class="btn" type="button" id="clearBrush">清除全部修改</button></div>
-            <p class="hint" id="brushHint" hidden>在「线稿」里涂抹：擦掉多余的字、杂点，或补上断开的线。</p>
+            <div class="row" id="rowBrush" data-show="seg.brush !== 'off'"><label for="brushSize">笔刷大小</label><input type="range" id="brushSize" min="0.5" max="8" step="0.5" value="2"><output for="brushSize"></output></div>
+            <div class="btns" id="brushBtns" data-show="seg.brush !== 'off'"><button class="btn" type="button" id="undoBrush">撤销一笔</button><button class="btn" type="button" id="clearBrush">清除全部修改</button></div>
+            <p class="hint" id="brushHint" data-show="seg.brush !== 'off'">在「线稿」里涂抹：擦掉多余的字、杂点，或补上断开的线。</p>
           </details>
         </div>
       </section>
@@ -96,33 +96,38 @@
         <div class="row"><label for="width">图案宽度</label><input type="range" id="width" min="40" max="250" step="5" value="120"><output for="width"></output></div>
         <div class="hint" id="widthHint" hidden><span id="widthHintText"></span> <button class="btn small" type="button" id="useRecWidth">用建议宽度</button></div>
 
-        <div class="group" data-for="cutout"><div class="gtitle">剪影</div>
+        <div class="group" data-show="p.kind === 'cutout'"><div class="gtitle">剪影</div>
           <div class="row"><label for="thick">厚度</label><input type="range" id="thick" min="1.5" max="8" step="0.5" value="3"><output for="thick"></output></div>
           <label class="check"><input type="checkbox" id="bar" checked>底部加连接横条</label>
         </div>
-        <div class="group" data-for="plaque" hidden><div class="gtitle">浮雕牌</div>
+        <div class="group" data-show="p.kind === 'plaque'"><div class="gtitle">浮雕牌</div>
           <div class="row"><label for="plateT">底板厚度</label><input type="range" id="plateT" min="1.2" max="6" step="0.2" value="2.4"><output for="plateT"></output></div>
           <div class="row"><label for="reliefH">线条凸起</label><input type="range" id="reliefH" min="0.6" max="4" step="0.2" value="1.6"><output for="reliefH"></output></div>
         </div>
-        <div class="group" data-for="litho" hidden><div class="gtitle">表面</div>
+        <div class="group" data-show="p.kind === 'litho'"><div class="gtitle">表面（下方只显示所选表面的参数）</div>
           <div class="seg" data-name="surface"><button type="button" data-v="facet" aria-pressed="false">多面体</button><button type="button" data-v="smooth" aria-pressed="true">平滑</button><button type="button" data-v="grid" aria-pressed="false">网格</button><button type="button" data-v="step" aria-pressed="false">阶梯</button></div>
-          <div class="row" id="rowLevels"><label for="levels">阶梯级数</label><input type="range" id="levels" min="3" max="16" step="1" value="8"><output for="levels"></output></div>
-          <div class="row" id="rowGrid"><label for="gridMM">网格间距</label><input type="range" id="gridMM" min="0.1" max="1" step="0.05" value="0.25"><output for="gridMM"></output></div>
-          <div class="row" id="rowSmooth"><label for="smoothDetail">平滑精度</label><input type="range" id="smoothDetail" min="0" max="100" step="1" value="45"><output for="smoothDetail"></output></div>
-          <div class="row" id="rowFacets"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="18"><input type="number" id="facetsNum" class="num" min="500" max="3000000" step="1000" value="4000" aria-label="分面点数"></div>
+          <div class="row" id="rowLevels" data-show="p.lithoStep"><label for="levels">阶梯级数</label><input type="range" id="levels" min="3" max="16" step="1" value="8"><output for="levels"></output></div>
+          <div class="row" id="rowGrid" data-show="p.lithoGrid"><label for="gridMM">网格间距</label><input type="range" id="gridMM" min="0.1" max="1" step="0.05" value="0.25"><output for="gridMM"></output></div>
+          <div class="row" id="rowSmooth" data-show="p.lithoSmooth"><label for="smoothDetail">平滑精度</label><input type="range" id="smoothDetail" min="0" max="100" step="1" value="45"><output for="smoothDetail"></output></div>
+          <div class="row" id="rowFacets" data-show="p.lithoFacet"><label for="facets">分面细度</label><input type="range" id="facets" min="0" max="100" step="1" value="18"><input type="number" id="facetsNum" class="num" min="500" max="3000000" step="1000" value="4000" aria-label="分面点数"></div>
           <p class="hint" id="facetHint"></p>
         </div>
-        <div class="group" data-for="litho" hidden><div class="gtitle">厚度（越暗越厚）</div>
+        <div class="group" data-show="p.kind === 'litho'"><div class="gtitle">厚度与照片（所有表面通用）</div>
           <div class="row"><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
           <div class="row"><label for="tMax">最厚（暗处）</label><input type="range" id="tMax" min="1.6" max="6" step="0.1" value="3.2"><output for="tMax"></output></div>
           <div class="row"><label for="gamma">对比度</label><input type="range" id="gamma" min="0.5" max="2" step="0.05" value="1"><output for="gamma"></output></div>
           <div class="row"><label for="denoise">平滑底色</label><input type="range" id="denoise" min="0" max="100" step="5" value="40"><output for="denoise"></output></div>
         </div>
-        <div class="group" data-for="litho" hidden><div class="gtitle">造型</div>
+        <div class="group" data-show="p.kind === 'litho'"><div class="gtitle">造型（所有表面通用，明暗起伏除外）</div>
           <label class="check"><input type="checkbox" id="flip" checked>正面凸起（脸凸、头发凹）</label>
-          <div class="row" id="rowBulge"><label for="bulge">明暗起伏</label><input type="range" id="bulge" min="0" max="20" step="0.5" value="6"><output for="bulge"></output></div>
+          <div class="row" id="rowBulge" data-show="!p.lithoStep"><label for="bulge">明暗起伏</label><input type="range" id="bulge" min="0" max="20" step="0.5" value="6"><output for="bulge"></output></div>
           <div class="row"><label for="frame">边框宽度</label><input type="range" id="frame" min="0" max="10" step="0.5" value="3"><output for="frame"></output></div>
+
+        </div>
+        <div class="group" data-show="p.kind === 'litho' &amp;&amp; p.base !== 'onepiece'"><div class="gtitle">单独打印时</div>
           <label class="check" id="rowPrintAid"><input type="checkbox" id="printAid" checked>竖打辅助：底部裙边 + 两侧可掰掉的支脚</label>
+        </div>
+        <div data-show="p.kind === 'litho'">
           <details class="more"><summary>这些选项是什么意思</summary>
             <p class="hint">越暗的地方越厚，背后打光就能看到照片。用白色或浅色耗材、100% 填充打印。</p>
             <p class="hint">正面凸起：把正面的凹凸反过来，亮处（脸）凸出、暗处（头发）凹进，背面相应错开，每处厚度不变，所以背光效果一样；总厚度约为 2×最厚 − 最薄。</p>
@@ -134,26 +139,28 @@
       <section class="step" aria-labelledby="s4">
         <h2 id="s4"><span class="n">5</span>底座与刻字</h2>
         <div class="seg" data-name="base"><button type="button" data-v="none">不要底座</button><button type="button" data-v="onepiece">一体打印</button><button type="button" data-v="separate" aria-pressed="true">分开打印</button></div>
-        <div class="stack" id="baseMore">
+        <div class="stack" id="baseMore" data-show="p.base !== 'none'">
           <details class="more"><summary>底座尺寸</summary>
             <div class="row"><label for="baseD">前后深度</label><input type="range" id="baseD" min="8" max="60" step="1" value="20"><output for="baseD"></output></div>
             <div class="row"><label for="baseH">底座高度</label><input type="range" id="baseH" min="3" max="20" step="0.5" value="5"><output for="baseH"></output></div>
             <div class="row"><label for="overhang">两侧外伸</label><input type="range" id="overhang" min="0" max="40" step="1" value="15"><output for="overhang"></output></div>
             <div class="row"><label for="insert">插入深度</label><input type="range" id="insert" min="1.5" max="10" step="0.5" value="3.5"><output for="insert"></output></div>
-            <div class="row" id="rowClr"><label for="clearance">卡槽间隙</label><input type="range" id="clearance" min="0" max="0.6" step="0.05" value="0.25"><output for="clearance"></output></div>
+            <div class="row" id="rowClr" data-show="p.base === 'separate'"><label for="clearance">卡槽间隙</label><input type="range" id="clearance" min="0" max="0.6" step="0.05" value="0.25"><output for="clearance"></output></div>
             <label class="check"><input type="checkbox" id="step" checked>顶面加一级台阶</label>
           </details>
         </div>
         <div class="group"><div class="gtitle">刻字</div>
+        <div class="stack" data-show="p.base !== 'none' || p.kind === 'plaque'">
         <div class="row two"><label for="text1" id="t1label">底座正面</label><input type="text" id="text1" placeholder="例如 Anna &amp; Ben" maxlength="60"></div>
-        <div class="row two" id="rowT2"><label for="text2">底座背面</label><input type="text" id="text2" placeholder="例如 12 June 2025" maxlength="60"></div>
+        <div class="row two" id="rowT2" data-show="p.base !== 'none'"><label for="text2">底座背面</label><input type="text" id="text2" placeholder="例如 12 June 2025" maxlength="60"></div>
         <div class="row two"><label for="font">字体</label>
           <select id="font"><option value="script">手写体</option><option value="serif">衬线体</option><option value="sans">无衬线体</option><option value="custom" disabled>上传的字体</option></select></div>
         <div class="btns"><label class="btn" for="fontFile" tabindex="0">上传字体文件…</label><input type="file" id="fontFile" accept=".ttf,.otf,.woff" hidden></div>
         <p class="hint">自带字体只有英文字母和数字。要刻中文，请上传一个中文字体（.ttf / .otf）。</p>
-        <details class="more"><summary>字高与深度</summary><div class="row"><label for="textH">字高</label><input type="range" id="textH" min="2" max="12" step="0.2" value="4.2"><output for="textH"></output></div>
-        <div class="row"><label for="textD">刻字深度</label><input type="range" id="textD" min="0.3" max="1.5" step="0.1" value="0.6"><output for="textD"></output></div>
+        <details class="more"><summary>文字大小</summary><div class="row"><label for="textH">字高</label><input type="range" id="textH" min="2" max="12" step="0.2" value="4.2"><output for="textH"></output></div>
+        <div class="row" data-show="p.base !== 'none'"><label for="textD">刻字深度</label><input type="range" id="textD" min="0.3" max="1.5" step="0.1" value="0.6"><output for="textD"></output></div>
         </details>
+        </div>
         <p class="hint" id="textNote"></p>
         </div>
       </section>
@@ -199,6 +206,6 @@
 <script src="js/lineart.js?v=72b3417d"></script>
 <script src="js/models.js?v=746f8647"></script>
 <script src="js/litho.js?v=c5daf756"></script>
-<script src="js/app.js?v=8793874c"></script>
+<script src="js/app.js?v=41398802"></script>
 </body>
 </html>

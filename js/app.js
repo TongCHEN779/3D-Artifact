@@ -88,7 +88,7 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: seg.lineMode === 'uniform', lineMode: seg.lineMode, edgeSmooth: n('edgeSmooth'), lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoFacet: seg.surface === 'facet', lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -97,23 +97,21 @@ function rawP() {
 
 function syncUI() {
   const p = P();
-  $('rowTh').hidden = p.thMode === 'adaptive'; $('rowC').hidden = p.thMode !== 'adaptive';
-  $('rowLW').hidden = $('rowSm').hidden = !p.smooth; $('rowEdge').hidden = p.smooth;
   $('lineHint').textContent = p.smooth ? '沿每条线的中心重新画一遍，线宽统一、曲线顺滑。适合照片、铅笔稿等线条粗细不匀的图；细节多的图会丢掉一些小线条。'
     : '保留原图每条线的形状和粗细，只把边缘磨平，太细的地方加粗到能打印。适合已经是干净线稿的图。';
-  $('bulge').disabled = p.lithoStep; $('rowBulge').title = p.lithoStep ? '阶梯模式下不起作用' : '';
   $('printerSum').textContent = `${$('printer').selectedOptions[0].textContent.replace(/（.*）/, '')} · ${p.printer.d} mm 喷嘴 · ${p.printer.h.toFixed(2)} mm 层高 · ${p.printer.walls} 圈墙`;
   updateWidthHint(p);
-  const br = seg.brush !== 'off';
-  $('rowBrush').hidden = $('brushBtns').hidden = $('brushHint').hidden = !br;
-  document.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== p.kind);
+  // every control that only applies in some situations carries its rule in data-show (see page markup)
+  document.querySelectorAll('[data-show]').forEach(el => {
+    const f = el._show || (el._show = new Function('p', 'seg', '$', 'return (' + el.dataset.show + ');'));
+    el.hidden = !f(p, seg, $);
+  });
   const litho = p.kind === 'litho';
   $('s2body').hidden = litho; $('s2note').hidden = true;
   $('s2').closest('section').hidden = litho;   // a lithophane uses the photo directly — no line-art step
   let k = 0; document.querySelectorAll('.controls > .step').forEach(sec => { if (!sec.hidden) sec.querySelector('h2 .n').textContent = ++k; });
-  if (litho) { $('rowPrintAid').hidden = p.base === 'onepiece'; $('rowFacets').hidden = p.lithoSmooth || p.lithoGrid || p.lithoStep; $('rowLevels').hidden = !p.lithoStep; $('rowSmooth').hidden = !p.lithoSmooth; $('rowGrid').hidden = !p.lithoGrid; }
   if (litho && p.lithoStep) {
-    $('facetHint').textContent = `阶梯：把厚度分成 ${p.levels} 级，每一级是平台、级与级之间是竖直的墙（上下一样粗）。按打印机设置，每个凸起和缝隙至少 ${p.printer.minLine.toFixed(2)} / ${p.printer.minGap.toFixed(2)} mm 宽，每级高度取整到 ${p.printer.h.toFixed(2)} mm 层高——比细线更细的细节会被去掉，换来每一处都能打出来。级数越多越接近照片的层次；明暗起伏在阶梯模式下不起作用。`;
+    $('facetHint').textContent = `阶梯：把厚度分成 ${Math.min(p.levels, Math.round((p.tMax - p.tMin) / p.printer.h) + 1)} 级，每一级是平台、级与级之间是竖直的墙（上下一样粗）。按打印机设置，每个凸起和缝隙至少 ${p.printer.minLine.toFixed(2)} / ${p.printer.minGap.toFixed(2)} mm 宽，每级高度取整到 ${p.printer.h.toFixed(2)} mm 层高——比细线更细的细节会被去掉，换来每一处都能打出来。级数越多越接近照片的层次，但不会多于厚度范围内的层数；明暗起伏在阶梯模式下不起作用，已隐藏。`;
   } else if (litho && p.lithoGrid) {
     const nx = Math.round(p.width / p.gridMM) + 1, nv = nx * nx;   // square estimate
     $('facetHint').textContent = `规则网格：每 ${p.gridMM.toFixed(2)} mm 一个点，约 ${(nv / 1e4).toFixed(0)} 万个点、${(2 * nv / 1e4).toFixed(0)} 万个三角面（正方形图案估算），STL 约 ${Math.round(nv * 4 * 50 / 1e6)} MB。点分布均匀、表面最平顺，和大多数透光浮雕软件一样；间距小于喷嘴的一半（${(p.printer.d / 2).toFixed(2)} mm）后打印出来差别不大。`;
@@ -121,16 +119,11 @@ function syncUI() {
   else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。${p.printer.d} mm 喷嘴能表现的最小细节约 ${(p.printer.d * 0.75).toFixed(2)} mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
-  $('baseMore').hidden = p.base === 'none';
-  $('rowClr').hidden = p.base !== 'separate';
   const standing = p.base !== 'none';
-  $('rowT2').hidden = !standing;
   $('t1label').textContent = standing ? '底座正面' : '牌子底部';
   const textOff = !standing && (p.kind === 'cutout' || p.kind === 'litho');
-  $('text1').disabled = textOff;
   $('textNote').textContent = textOff ? (litho ? '透光浮雕本身不刻字。选择底座后，可以把字刻在底座上。' : '平放的剪影没有地方刻字。选择底座，或改成浮雕牌（字会凸起在牌子底部）。')
-    : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里。';
-  $('rowBed').hidden = $('printer').value !== 'custom';
+    : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里（高度同线条凸起）。';
   const r = p.printer;
   $('printerNote').textContent = `线条 ≥ ${r.minLine.toFixed(2)} mm · 缝隙 ≥ ${r.minGap} mm · 文字笔画 ≥ ${r.minStroke.toFixed(2)} mm · 高度按 ${r.h.toFixed(2)} mm 层高取整` +
     (p.adjusted.length ? '。已自动调整：' + p.adjusted.join('；') + '。' : '');
