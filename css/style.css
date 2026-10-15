@@ -96,3 +96,5 @@ details.more[open] summary { margin-bottom: 4px; }
 .foot { max-width: 1440px; margin: 0 auto; padding-inline: 16px; padding-block: 0 24px; color: var(--muted); font-size: 12.5px; }
 .foot a { color: inherit; }
 .file button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+
+[hidden] { display: none !important; }

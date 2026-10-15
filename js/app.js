@@ -11,11 +11,14 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
+  lampD: v => v + ' mm', lampOpen: v => v + ' mm', copies: v => v + ' 张', lampTop: v => v + '°', lampRes: v => (+v).toFixed(2) + ' mm', neckH: v => v + ' mm', pitch: v => (+v).toFixed(1) + ' mm', snaps: v => v + ' 个', fitGap: v => (+v).toFixed(2) + ' mm',
   layer: v => (+v).toFixed(2) + ' mm', edgeSmooth: v => +v ? (+v).toFixed(2) + ' mm' : '不平滑', denoise: v => +v ? v + '%' : '关', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
+const isLit = k => k === 'litho' || k === 'lamp';   // models made from the photo itself, not from line art
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, lineMode: 2, edgeSmooth: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
+  lampD: 4, lampOpen: 4, copies: 4, lampTop: 4, lampRes: 4, fix: 4, neckH: 4, pitch: 4, snaps: 4, fitGap: 4,
   tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, smoothDetail: 4, denoise: 4,
   thick: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
@@ -66,12 +69,12 @@ function P() {
     const v = Math.max(2 * r.h, Math.round(p[key] / r.h) * r.h);
     if (Math.abs(v - p[key]) > 1e-6) { if (show) adj.push(`${label} ${(+p[key]).toFixed(2)} → ${v.toFixed(2)} mm（按层高取整）`); p[key] = v; }
   };
-  const K = p.kind, lines = K !== 'litho';
+  const K = p.kind, lines = K === 'cutout';
   up('minWidth', r.minLine, '最细线宽', lines); up('lineWidth', p.minWidth, '线宽', lines && p.smooth);
   snap('thick', '剪影厚度', K === 'cutout');
   up('tMin', Math.round(2 * r.d * 100) / 100, '透光最薄', !lines); if (p.tMax < p.tMin + 0.4) p.tMax = p.tMin + 0.4;
   if (p.frame > 0) up('frame', 2 * r.lineW, '边框宽度', !lines);
-  snap('baseH', '底座高度', p.base !== 'none'); snap('textD', '刻字深度', !!(p.text1 || p.text2));
+  snap('baseH', '底座高度', p.base !== 'none' && K !== 'lamp'); snap('textD', '刻字深度', !!(p.text1 || p.text2) && K !== 'lamp');
   p.printer = r; p.minGap = r.minGap; p.adjusted = adj;
   return p;
 }
@@ -80,7 +83,7 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: seg.lineMode === 'uniform', lineMode: seg.lineMode, edgeSmooth: n('edgeSmooth'), lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, lampD: n('lampD'), lampOpen: n('lampOpen'), copies: n('copies'), lampTop: n('lampTop'), lampRes: n('lampRes'), fix: seg.fix, neckH: n('neckH'), pitch: n('pitch'), snaps: n('snaps'), fitGap: n('fitGap'), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked,
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -98,14 +101,21 @@ function syncUI() {
     const f = el._show || (el._show = new Function('p', 'seg', '$', 'return (' + el.dataset.show + ');'));
     el.hidden = !f(p, seg, $);
   });
-  const litho = p.kind === 'litho';
+  const litho = isLit(p.kind), lamp = p.kind === 'lamp';
   $('s2body').hidden = litho; $('s2note').hidden = true;
   $('s2').closest('section').hidden = litho;   // a lithophane uses the photo directly — no line-art step
   let k = 0; document.querySelectorAll('.controls > .step').forEach(sec => { if (!sec.hidden) sec.querySelector('h2 .n').textContent = ++k; });
-  if (litho) $('facetHint').textContent = `网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
+  if (p.kind === 'litho') $('facetHint').textContent = `网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
   $('t1label').textContent = '底座正面';
+  if (lamp) {
+    const g = lampGeometry(p);
+    $('lampHint').textContent = `图案用墨卡托投影包在球面上，形状不变形；顶部 ${p.lampTop}° 以内和开口附近是实心的。球内壁光滑，图案刻在外面（亮处凹得深）。表面细腻度越小越细，计算越慢、文件越大。`;
+    $('fixHint').textContent = p.fix === 'thread'
+      ? `螺纹：灯罩颈部是内螺纹，配套接环带外螺纹，把接环拧进去（顺时针拧紧）。螺距 ${p.pitch} mm，螺纹深 ${(0.25 * p.pitch).toFixed(2)} mm，最小通光孔径约 ${(2 * g.ai).toFixed(0)} mm。`
+      : `卡点：颈部有 ${Math.round(p.snaps)} 个带钩的弹片，接环上有一圈凹槽；把接环直接推进去就“咔”一声卡住，用力向下拉可拔出。弹片是 PLA 薄片，别反复硬掰。`;
+  }
   const r = p.printer;
   $('printerNote').textContent = `线条 ≥ ${r.minLine.toFixed(2)} mm · 缝隙 ≥ ${r.minGap} mm · 文字笔画 ≥ ${r.minStroke.toFixed(2)} mm · 高度按 ${r.h.toFixed(2)} mm 层高取整` +
     (p.adjusted.length ? '。已自动调整：' + p.adjusted.join('；') + '。' : '');
@@ -117,7 +127,7 @@ function onChange(id) {
   syncUI();
   if (id === 'brush') { if (seg.brush !== 'off') showTab('line'); drawLine(); return; }
   if (id === 'brushSize') return;
-  if (id === 'kind') { invalidate(seg.kind === 'litho' || cache.kind === 'litho' ? 2 : 3); return; }
+  if (id === 'kind') { invalidate(isLit(seg.kind) || isLit(cache.kind) ? 2 : 3); return; }
   if (id === 'thMode' && seg.thMode === 'manual' && cache.autoTh) $('threshold').value = cache.autoTh;
   invalidate(stageOf[id] || 4);
 }
@@ -184,7 +194,7 @@ function medianLineWidth(m, W, H) {
 let recWidth = 0;
 function updateWidthHint(p) {
   const el = $('widthHint'); recWidth = 0;
-  if (p.kind === 'litho' || !cache.lineMM || cache.kind === undefined) { el.hidden = true; return; }
+  if (isLit(p.kind) || !cache.lineMM || cache.kind === undefined) { el.hidden = true; return; }
   const line = cache.lineMM, need = p.printer.minLine;
   if (line >= need * 0.95) { el.hidden = true; return; }
   const bedMax = Math.max(p.printer.bed[0], p.printer.bed[1]) - 2 * (p.base !== 'none' ? p.overhang : 0) - 4;
@@ -271,7 +281,7 @@ $('srcCanvas').addEventListener('pointerup', () => {
 let lineFit = null, painting = null, hover = null;
 function drawLine() {
   const cv0 = $('lineCanvas');
-  if (!cv0.hidden && P().kind === 'litho') {
+  if (!cv0.hidden && isLit(P().kind)) {
     if (!cache.litho) return;
     const pv = lithoPreview(cache.litho.tri, P()), f = lineFit = fitCanvas(cv0, pv.width, pv.height), x = cv0.getContext('2d');
     x.fillStyle = css('--bed'); x.fillRect(0, 0, cv0.width, cv0.height); x.imageSmoothingEnabled = true;
@@ -332,9 +342,9 @@ async function run() {
   running = true; $('busy').hidden = false; await frame();
   const lvl = dirty; dirty = 9; const p = P();
   try {
-    if (p.kind === 'litho') {
-      if (lvl <= 2) { stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); cache.kind = 'litho'; }
-      if (lvl <= 4) { $('busy').textContent = '计算多面体…'; await frame(); await stage4(p); drawLine(); }
+    if (isLit(p.kind)) {
+      if (lvl <= 2) { stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); cache.kind = p.kind; }
+      if (lvl <= 4) { $('busy').textContent = p.kind === 'lamp' ? '计算灯罩…' : '计算模型…'; await frame(); await stage4(p); drawLine(); }
     } else {
     if (lvl <= 2) { $('busy').textContent = '转成黑白…'; await frame();
       stage1(p, crop || { x0: 0, y0: 0, x1: 1, y1: 1 }); stage2(p);
@@ -351,8 +361,8 @@ async function run() {
 function stage1(p, c) {
   const sx = c.x0 * srcImg.width, sy = c.y0 * srcImg.height, sw = (c.x1 - c.x0) * srcImg.width, sh = (c.y1 - c.y0) * srcImg.height;
   // lithophanes keep the photo's own resolution (up to 3000 px) so the fine mesh has detail to follow
-  const cap = p.kind === 'litho' ? 3000 : 1600, capH = p.kind === 'litho' ? 3000 : 2000;
-  let W = p.kind === 'litho' ? Math.min(cap, Math.round(sw)) : Math.min(cap, Math.round(p.width / 0.1)), H = Math.round(W * sh / sw);
+  const cap = isLit(p.kind) ? 3000 : 1600, capH = isLit(p.kind) ? 3000 : 2000;
+  let W = isLit(p.kind) ? Math.min(cap, Math.round(sw)) : Math.min(cap, Math.round(p.width / 0.1)), H = Math.round(W * sh / sw);
   if (H > capH) { W = Math.round(W * capH / H); H = capH; }
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const x = cv.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
@@ -410,7 +420,15 @@ async function stage4(p) {
   await Promise.all([initManifold(), fontsReady]);
   collectGarbage();
   const { field, W, H, s } = cache;
-  if (p.kind === 'litho') {
+  if (p.kind === 'lamp') {
+    const L = buildLamp(cache.gray, W, H, p);
+    cache.litho = { tri: L.tri }; cache.kind = 'lamp'; cache.lamp = L.info;
+    const dx = L.info.flangeR + L.info.R + 8, nm = L.info.thread ? '螺纹' : '卡扣';
+    built = { warnings: L.warnings, dims: dimsOf(L.shade), parts: [
+      { name: `球形灯罩（${nm}颈部，颈口朝下打印）`, file: 'lamp_shade.stl', manifold: L.shade, role: 'panel' },
+      { name: `灯座接环（${nm}）`, file: 'lamp_adapter.stl', manifold: L.adapter, role: 'base', view: [{ m: L.adapter, role: 'base', M: [1, 0, 0, dx, 0, 1, 0, 0, 0, 0, 1, 0] }] },
+    ] };
+  } else if (p.kind === 'litho') {
     const L = buildLithoPanel(cache.gray, W, H, p, W * s);
     cache.litho = L; cache.kind = 'litho';
     built = buildModels(null, p, fonts, L.panel);
@@ -427,7 +445,7 @@ async function stage4(p) {
   }
   // the lithophane is a continuous surface: shade it smoothly, as it will print
   // (flat shading exaggerates 0.01 mm facet angles into a "frosted" look that no printer reproduces)
-  if (p.kind === 'litho') for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
+  if (isLit(p.kind)) for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
   view.show(show);
   const bed = p.printer.bed;
   for (const m of built.parts) {
@@ -446,6 +464,15 @@ function updateStatus(p) {
   const st = $('status'); st.innerHTML = '';
   const add = (html) => { const s = document.createElement('span'); s.innerHTML = html; st.appendChild(s); };
   const { W, H, s, pieces, stats } = cache;
+  if (p.kind === 'lamp' && cache.lamp && built) {
+    const i = cache.lamp;
+    add(`球径 <b>${p.lampD} mm</b> · 开口 <b>${(2 * i.ai).toFixed(0)} mm</b>`);
+    add(`每张图占 <b>${(i.span * 180 / Math.PI).toFixed(0)}°</b>${i.copies > 1 ? ` × ${i.copies} 张` : ''}`);
+    add(`灯罩 <b>${(built.parts[0].manifold.numTri() / 1000).toFixed(0)}</b> 千个三角面`);
+    add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
+    add(`灯罩高 <b>${built.dims[2].toFixed(0)} mm</b>`);
+    return;
+  }
   add(`图案 <b>${(W * s).toFixed(0)} × ${(H * s).toFixed(0)} mm</b>`);
   if (p.kind === 'litho' && cache.litho) {
     const t = cache.litho.tri;
@@ -539,8 +566,9 @@ const view = (() => {
 })();
 function drawLegend() {
   const lg = $('legend'); lg.innerHTML = '';
-  if (tab === 'line' && P().kind === 'litho') { lg.hidden = false; lg.innerHTML = '<span>模拟背后打光时看到的样子</span>'; }
+  if (tab === 'line' && isLit(P().kind)) { lg.hidden = false; lg.innerHTML = '<span>模拟背后打光时看到的样子</span>'; }
   else if (tab === 'line') { lg.hidden = false; lg.innerHTML = `<span><i style="background:var(--stroke)"></i>线条</span><span><i style="background:var(--added)"></i>加粗/补接</span><span><i style="background:var(--removed)"></i>去掉</span>`; }
+  else if (tab === '3d' && P().kind === 'lamp') { lg.hidden = false; lg.innerHTML = `<span><i style="background:#efe9de;border:1px solid var(--line)"></i>灯罩</span><span><i style="background:#48524d"></i>灯座接环（右侧）</span>`; }
   else if (tab === '3d' && P().base !== 'none') { lg.hidden = false; lg.innerHTML = `<span><i style="background:#efe9de;border:1px solid var(--line)"></i>图案</span><span><i style="background:#48524d"></i>底座</span>`; }
   else lg.hidden = true;
 }
@@ -555,7 +583,7 @@ async function save(filename, data) {
   toast('已下载：' + filename); return true;
 }
 function lineartPNG() {
-  if (P().kind === 'litho' && cache.litho) return new Promise(r => lithoPreview(cache.litho.tri, P()).toBlob(r, 'image/png'));
+  if (isLit(P().kind) && cache.litho) return new Promise(r => lithoPreview(cache.litho.tri, P()).toBlob(r, 'image/png'));
   return new Promise(r => {
     const { W, H, mask } = cache, c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d'), img = x.createImageData(W, H);
@@ -568,14 +596,18 @@ function notes(p) {
   L.push('线稿立体工坊 · 打印说明', '');
   for (const m of built.meshes) L.push(`${m.file}  —  ${m.name}，${partDims(m).map(v => v.toFixed(1)).join(' × ')} mm`);
   L.push('');
-  if (p.base === 'separate') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
-  if (p.base === 'onepiece') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');
-  if (p.base === 'none') L.push('平放打印，不需要支撑。');
+  if (p.kind === 'lamp') {
+    L.push(p.fix === 'thread' ? `螺纹固定：灯罩颈部是内螺纹，接环是外螺纹（螺距 ${p.pitch} mm，右旋，配合间隙 ${p.fitGap} mm）。拧不动就用小刀修一下螺纹，太松就把配合间隙调小再打。` : `卡点固定：颈部 ${Math.round(p.snaps)} 个弹片带内钩，接环有一圈凹槽，直接推入即可卡住。弹片较薄，打印时请把外墙圈数设多一点，别用太快的速度。`);
+    L.push(`球形灯罩：球径 ${p.lampD} mm，壁厚 ${p.tMin}–${p.tMax} mm，越厚越暗。STL 是使用姿态（颈口朝下，z = 0 在颈口）。球体下半部分向外鼓出，需要支撑（建议只在“接触底板”之外的位置用树状支撑），内侧顶部也需要少量支撑；用白色或浅色 PLA、100% 填充，0.12–0.16 mm 层高。灯座接环平放（法兰朝下）打印，不需要支撑。LED 灯请选发热小的，别让灯泡贴近塑料。`);
+  }
+  if (p.base === 'separate' && p.kind !== 'lamp') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
+  if (p.base === 'onepiece' && p.kind !== 'lamp') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');
+  if (p.base === 'none' && p.kind !== 'lamp') L.push('平放打印，不需要支撑。');
   if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
   if (p.kind === 'litho' && p.printAid && p.base !== 'onepiece') L.push(`透光浮雕 STL 已经是竖立的打印姿态：底边朝下，带 两层厚的裙边和两侧三角支脚（与浮雕隔 0.3 mm，每 8 mm 一个小连接点）。直接切片，不用再加支撑或 brim；打完撕掉裙边、掰掉支脚，用刀修平底边再插进底座。建议 0.12–0.16 mm 层高、100% 填充、外墙速度放慢，床温略高一点（PLA 60–65 °C）帮助粘牢。`);
   if (p.kind === 'litho' && p.flip) L.push(`正面凸起：两面都有起伏（背面是反向浮雕，朝灯摆放），请竖着打印（底边朝下），不需要支撑。`);
   if (p.kind === 'litho' && p.bulge > 0) L.push(`曲面透光：背面跟着正面一起鼓起 ${p.bulge} mm，厚度处处不变。推荐竖着打印（底边朝下，不需要支撑）；平放打印时背面朝下需要少量支撑。`);
-  else L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(2)} mm，按 ${p.printer.d} mm 喷嘴、${p.printer.walls} 圈墙生成。`);
+  else if (p.kind === 'cutout') L.push(`线条最细处约 ${((2 * cache.rMin + 1) * cache.s).toFixed(2)} mm，按 ${p.printer.d} mm 喷嘴、${p.printer.walls} 圈墙生成。`);
   L.push(`打印机设置：${p.printer.d} mm 喷嘴，${p.printer.h.toFixed(2)} mm 层高，打印范围 ${p.printer.bed.join(' × ')} mm。模型里所有高度都是层高的整数倍，切片时请用同样的层高。`);
   if (p.adjusted.length) L.push('为适配打印机自动调整：' + p.adjusted.join('；') + '。');
   if (p.text1 || p.text2) L.push('刻字较小，建议层高 0.1–0.12 mm。');
@@ -585,13 +617,13 @@ $('dlZip').addEventListener('click', async () => {
   if (!built) return; const p = P();
   const files = built.meshes.map(m => Object.assign({ name: m.file }, stlParts(m)));
   const enc = new TextEncoder();
-  files.push({ name: p.kind === 'litho' ? 'backlit-preview.png' : 'lineart.png', data: new Uint8Array(await (await lineartPNG()).arrayBuffer()) });
+  files.push({ name: isLit(p.kind) ? 'backlit-preview.png' : 'lineart.png', data: new Uint8Array(await (await lineartPNG()).arrayBuffer()) });
   if (view.ok()) { const was = tab; if (tab !== '3d') showTab('3d'); await frame(); files.push({ name: 'preview.png', data: new Uint8Array(await (await view.snapshot()).arrayBuffer()) }); if (was !== '3d') showTab(was); }
   files.push({ name: 'print-notes.txt', data: enc.encode('﻿' + notes(p)) });
   await save('lineart-3d-model.zip', makeZip(files));
 });
 $('dlShot').addEventListener('click', async () => { if (!view.ok() || !built) return; const was = tab; if (tab !== '3d') showTab('3d'); await frame(); const b = await view.snapshot(); if (was !== '3d') showTab(was); await save('preview.png', b); });
-$('dlLine').addEventListener('click', async () => { const li = P().kind === 'litho'; if (li ? !cache.litho : !cache.mask) return; await save(li ? 'backlit-preview.png' : 'lineart.png', await lineartPNG()); });
+$('dlLine').addEventListener('click', async () => { const li = isLit(P().kind); if (li ? !cache.litho : !cache.mask) return; await save(li ? 'backlit-preview.png' : 'lineart.png', await lineartPNG()); });
 
 // ---------- boot ----------
 window.addEventListener('resize', () => { if (tab === 'src') drawSrc(); if (tab === 'line') drawLine(); });
