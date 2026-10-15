@@ -64,24 +64,6 @@ function buildModels(art, p, fonts, litho) {
 
   if (p.kind === 'litho') {
     panel = litho; panelT = Math.max(lithoDepth(p), 0.1);
-  } else if (p.kind === 'plaque') {
-    const bb = art.bounds();
-    const M = 6;
-    let bottomExtra = 0, plaqueText = null;
-    if (!standing && p.text1) {
-      plaqueText = textCrossSection(p.text1, font, p.textH, p.printer ? p.printer.minStroke : 0);
-      if (plaqueText) bottomExtra = p.textH + 3;
-    }
-    const x0 = bb.min[0] - M, x1 = bb.max[0] + M, y0 = bb.min[1] - M - bottomExtra, y1 = bb.max[1] + M;
-    const plate = rect(x0, y0, x1, y1);
-    const rim = G(plate.subtract(G(plate.offset(-2, 'Miter'))));
-    let raised = G(art.add(rim));
-    if (plaqueText) raised = G(raised.add(G(plaqueText.cs.translate([(x0 + x1) / 2, y0 + 1.5 + bottomExtra / 2 - 0.75]))));
-    const base = G(plate.extrude(p.plateT));
-    const top = G(G(raised.extrude(p.reliefH + 0.4)).translate([0, 0, p.plateT - 0.4]));
-    panel = G(Manifold.union(base, top));
-    panelT = p.plateT + p.reliefH;
-    if (plaqueText && plaqueText.w > x1 - x0 - 6) warnings.push('文字比牌子宽，建议缩小字高。');
   } else {
     panel = G(art.extrude(p.thick));
     panelT = p.thick;
@@ -200,8 +182,8 @@ function lithoPrintAids(panel, p, warnings) {
   bigNote(warnings, panel.numTri());
   return { pieces: [{ m: panel, M }, { m: aid, M }] };
 }
-const PANEL_NAME = { cutout: '镂空剪影', plaque: '浮雕牌', litho: '透光浮雕' };
-const PANEL_FILE = { cutout: 'cutout.stl', plaque: 'relief_plaque.stl', litho: 'lithophane.stl' };
+const PANEL_NAME = { cutout: '镂空剪影', litho: '透光浮雕' };
+const PANEL_FILE = { cutout: 'cutout.stl', litho: 'lithophane.stl' };
 function dimsOf(m) { const b = m.boundingBox(); return [0, 1, 2].map(i => b.max[i] - b.min[i]); }
 
 function meshArrays(m) {

@@ -1,4 +1,4 @@
-// ===== Faceted lithophane =====
+// ===== Lithophane =====
 // Thickness follows darkness (thicker = darker when back-lit). The surface is an error-driven
 // adaptive triangulation: vertices are inserted where the flat facets deviate most from the
 // target, so facets are small around eyes, mouth and outlines and large in smooth areas.
@@ -7,11 +7,10 @@ function lithoThickness(gray, W, H, p) {
   // analysis grid: about 6 px per vertex spacing, between 600 px and the image's own resolution
   // smooth surface: about 0.15 mm per analysis pixel and a slightly softer image, so the mesh can follow gentle shading
   // smooth detail d∈[0,1]: analysis pixel 0.2 → 0.06 mm, softening 1.2 → 0.5 px
-  if (p.lithoGrid) return lithoThicknessGrid(gray, W, H, p);
   const d = Number.isFinite(p.smoothDetail) ? p.smoothDetail : 0.45;
-  const lim = p.lithoSmooth ? Math.max(600, Math.min(3000, Math.round(p.widthMM / (0.2 * Math.pow(0.3, d))))) : Math.max(600, Math.round(Math.sqrt(p.facets) * 6));
+  const lim = Math.max(600, Math.min(3000, Math.round(p.widthMM / (0.2 * Math.pow(0.3, d)))));
   const k = Math.min(1, lim / Math.max(W, H)), w = Math.max(16, Math.round(W * k)), h = Math.max(16, Math.round(H * k));
-  const g = gaussBlur(gray, W, H, (p.lithoSmooth ? 1.2 - 0.7 * d : 0.6) / k), Z = new Float32Array(w * h);
+  const g = gaussBlur(gray, W, H, (1.2 - 0.7 * d) / k), Z = new Float32Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = g[Math.min(H - 1, Math.round((y + 0.5) / k - 0.5)) * W + Math.min(W - 1, Math.round((x + 0.5) / k - 0.5))];
     const dark = Math.min(1, Math.max(0, 1 - v / 255));
@@ -44,43 +43,6 @@ function lithoBulge(gray, W, H, L, p, widthMM) {
     D[y * w + x] = p.bulge * ((v - lo) / Math.max(1, hi - lo)) * sm((edge - flat) / ramp);
   }
   return D;
-}
-
-// Regular grid: one vertex every p.gridMM millimetres, sampled bilinearly from the photo (may go finer than
-// the photo itself, which just interpolates). Capped at LITHO_MAX_VERTS vertices.
-function lithoThicknessGrid(gray, W, H, p) {
-  let step = Math.max(0.05, p.gridMM || 0.25);
-  let w = Math.round(p.widthMM / step) + 1, h = Math.round((w - 1) * H / W) + 1;
-  const cap = LITHO_MAX_VERTS; if (w * h > cap) { const f = Math.sqrt(cap / (w * h)); w = Math.max(16, Math.round(w * f)); h = Math.max(16, Math.round(h * f)); }
-  const k = (w - 1) / Math.max(1, W - 1);                    // vertices per photo pixel
-  const g = k < 1 ? gaussBlur(gray, W, H, 0.5 / k) : gray, Z = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const sy = Math.min(H - 1, y * (H - 1) / Math.max(1, h - 1)), y0 = Math.floor(sy), y1 = Math.min(H - 1, y0 + 1), fy = sy - y0;
-    for (let x = 0; x < w; x++) {
-      const sx = Math.min(W - 1, x * (W - 1) / Math.max(1, w - 1)), x0 = Math.floor(sx), x1 = Math.min(W - 1, x0 + 1), fx = sx - x0;
-      const v = (g[y0 * W + x0] * (1 - fx) + g[y0 * W + x1] * fx) * (1 - fy) + (g[y1 * W + x0] * (1 - fx) + g[y1 * W + x1] * fx) * fy;
-      const dark = Math.min(1, Math.max(0, 1 - v / 255));
-      Z[y * w + x] = p.tMin + (p.tMax - p.tMin) * Math.pow(dark, p.gamma);
-    }
-  }
-  return { Z, w, h, k };
-}
-// Every grid vertex, two triangles per cell; open (boundary) edges marked -1 the way Delaunator does.
-function gridTriangulation(Z, w, h, D) {
-  const n = w * h, pts = new Int32Array(2 * n);
-  for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) { pts[2 * i] = x; pts[2 * i + 1] = y; }
-  const nc = (w - 1) * (h - 1), tris = new Uint32Array(nc * 6), he = new Int32Array(nc * 6);
-  let t = 0;
-  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
-    const a = y * w + x, b = a + 1, c = a + w + 1, d = a + w, o = t * 3;
-    tris.set([a, b, c, a, c, d], o);
-    if (y === 0) he[o] = -1;              // a→b, top row
-    if (x === w - 2) he[o + 1] = -1;      // b→c, right column
-    if (y === h - 2) he[o + 4] = -1;      // c→d, bottom row
-    if (x === 0) he[o + 5] = -1;          // d→a, left column
-    t += 2;
-  }
-  return { pts, tris, halfedges: he, Z, D, w, h, grid: true };
 }
 
 function adaptiveTriangulation(Z, w, h, nTarget, tol, D, frameIn) {
@@ -195,87 +157,7 @@ function countOpen(he) { let k = 0; for (let i = 0; i < he.length; i++) if (he[i
 function smoothTol(p) { return 0.04 * Math.pow(0.1, Number.isFinite(p.smoothDetail) ? p.smoothDetail : 0.45); }
 
 // thickness of the flat slab the panel occupies (frame, edge in the stand)
-function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }   // stepped levels are rounded to layers, within a layer of this
-
-// ===== Stepped lithophane (printable lines) =====
-// Thickness is quantised into a few levels. Each level is a flat terrace with vertical walls, every terrace
-// and every gap at least one printable line wide (from the printer settings), and every height a whole
-// number of layers — so ridges come out as real walls instead of the sharp-topped, wide-footed ridges a
-// smooth height map makes. Built from 2D outlines extruded per level, like the cut-out and plaque models.
-function buildSteppedPanel(gray, W, H, p, widthMM) {
-  const pr = p.printer || { h: 0.2, minLine: 0.84, minGap: 0.4 };
-  const px = Math.max(0.05, Math.min(0.15, pr.minLine / 6));          // analysis pixel (mm)
-  const w = Math.max(16, Math.round(widthMM / px) + 1), h = Math.max(16, Math.round((w - 1) * H / W) + 1), sc = widthMM / (w - 1);
-  const k = (w - 1) / Math.max(1, W - 1), g = k < 1 ? gaussBlur(gray, W, H, 0.5 / k) : gray;
-  const N = Math.max(2, Math.min(Math.round(p.levels || 8), Math.round((p.tMax - p.tMin) / pr.h) + 1));   // no more levels than layers
-  // level thicknesses, whole layers, strictly increasing
-  const T = []; for (let i = 0; i < N; i++) { const t = p.tMin + (p.tMax - p.tMin) * i / (N - 1); T.push(Math.max(2 * pr.h, Math.round(t / pr.h) * pr.h)); }
-  for (let i = 1; i < N; i++) if (T[i] <= T[i - 1] + 1e-6) T[i] = T[i - 1] + pr.h;
-  // darkness → level index
-  const lev = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const sy = Math.min(H - 1, y * (H - 1) / Math.max(1, h - 1)), y0 = Math.floor(sy), y1 = Math.min(H - 1, y0 + 1), fy = sy - y0;
-    for (let x = 0; x < w; x++) {
-      const sx = Math.min(W - 1, x * (W - 1) / Math.max(1, w - 1)), x0 = Math.floor(sx), x1 = Math.min(W - 1, x0 + 1), fx = sx - x0;
-      const v = (g[y0 * W + x0] * (1 - fx) + g[y0 * W + x1] * fx) * (1 - fy) + (g[y1 * W + x0] * (1 - fx) + g[y1 * W + x1] * fx) * fy;
-      const dark = Math.pow(Math.min(1, Math.max(0, 1 - v / 255)), p.gamma);
-      lev[y * w + x] = Math.min(N - 1, Math.round(dark * (N - 1)));
-    }
-  }
-  const framePx = p.frame > 0 ? Math.round(Math.min(p.frame, widthMM / 4, (h - 1) * sc / 4) / sc) : 0;
-  // cumulative masks (level ≥ i), cleaned so every raised part and every gap is printable, and kept nested
-  const rLine = Math.max(1, Math.round(pr.minLine / 2 / sc)), rGap = Math.max(1, Math.round(pr.minGap / 2 / sc));
-  const masks = [null]; let prev = null;
-  for (let i = 1; i < N; i++) {
-    let m = new Uint8Array(w * h); for (let j = 0; j < m.length; j++) m[j] = lev[j] >= i ? 1 : 0;
-    m = dilate(erode(m, w, h, rLine), w, h, rLine);                  // drop parts thinner than one printable line
-    m = erode(dilate(m, w, h, rGap), w, h, rGap);                    // close gaps narrower than the nozzle
-    if (prev) for (let j = 0; j < m.length; j++) m[j] &= prev[j];
-    masks.push(m); prev = m;
-  }
-  // per-pixel final level (for the back-lit preview), frame at full thickness
-  const Zq = new Float32Array(w * h);
-  for (let j = 0; j < Zq.length; j++) { let L = 0; for (let i = N - 1; i >= 1; i--) if (masks[i][j]) { L = i; break; } Zq[j] = T[L]; }
-  // geometry: each exact level region is a slab with vertical sides
-  //   normal: 0 … T_i      face forward (flip): K − 2·T_i … K − T_i  (same thickness, inverted front relief)
-  const K = 2 * T[N - 1], depth = p.flip ? K - T[0] : T[N - 1], solids = [];
-  const sm = Math.max(0.6, 0.04 / sc), Wm = (w - 1) * sc, Hm = (h - 1) * sc, PAD = 3;
-  const frameRect = rect(0, 0, Wm, Hm);
-  // smooth outline of a mask; the mask is padded by repeating its edge so outlines run past the panel border,
-  // then clipped to the panel — no hairline strips along the edges
-  const outline = m => {
-    const pw = w + 2 * PAD, ph = h + 2 * PAD, q = new Float32Array(pw * ph);
-    for (let y = 0; y < ph; y++) { const sy = Math.min(h - 1, Math.max(0, y - PAD)); for (let x = 0; x < pw; x++) q[y * pw + x] = m[sy * w + Math.min(w - 1, Math.max(0, x - PAD))]; }
-    const f = gaussBlur(q, pw, ph, sm), cs = fieldToCrossSection(f, pw, ph, sc);
-    return cs ? G(G(cs.translate([-PAD * sc, -PAD * sc])).intersect(frameRect)) : null;
-  };
-  if (!p.flip) {
-    // terraces stacked from the back: base plate 0…T₀, then every "level ≥ i" area extruded 0…Tᵢ
-    solids.push(G(frameRect.extrude(T[0])));
-    for (let i = 1; i < N; i++) { const cs = outline(masks[i]); if (cs && cs.area() > 0) solids.push(G(cs.extrude(T[i]))); }
-  } else {
-    // face forward: front Fᵢ = K − Tᵢ, back Bᵢ = K − 2Tᵢ (thickness Tᵢ, front relief inverted).
-    // Both fall as the level rises, so with Lᵢ = "level ≤ i":  solid = ⋃ Lᵢ×[0, Fᵢ]  minus  ⋃ Lᵢ×[−1, Bᵢ].
-    // Each Lᵢ outline is used for both, so the front and back steps line up exactly.
-    const add = [G(frameRect.extrude(K - T[N - 1]))], cut = [];
-    for (let i = 0; i < N - 1; i++) {
-      const comp = new Uint8Array(w * h); for (let j = 0; j < comp.length; j++) comp[j] = masks[i + 1][j] ? 0 : 1;
-      const cs = outline(comp); if (!cs || !(cs.area() > 0)) continue;
-      add.push(G(cs.extrude(K - T[i])));
-      cut.push(G(G(cs.extrude(K - 2 * T[i] + 1)).translate([0, 0, -1])));
-    }
-    solids.push(G(G(MF.Manifold.union(add)).subtract(G(MF.Manifold.union(cut)))));
-  }
-  let m = G(MF.Manifold.union(solids));
-  if (framePx > 0) {
-    const f = framePx * sc;
-    const ring = G(G(rect(0, 0, Wm, Hm).subtract(rect(f, f, Wm - f, Hm - f))).extrude(depth));
-    m = G(MF.Manifold.union(m, ring));
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < framePx || y < framePx || x > w - 1 - framePx || y > h - 1 - framePx) Zq[y * w + x] = T[N - 1];
-  }
-  const tri = { grid: true, stepped: true, levels: N, T, Z: Zq, w, h, widthMM, pts: [], tris: [] };
-  return { panel: m, tri, hmm: (h - 1) * sc };
-}
+function lithoDepth(p) { return p.flip ? 2 * p.tMax - p.tMin : p.tMax; }
 
 // Edge-preserving denoise (self-guided filter, He et al. 2010). Flat areas — a plain background, skin — have
 // 8-bit banding and sensor noise of a gray level or two; a fine mesh would trace those as tiny random facets
@@ -313,7 +195,6 @@ function buildLithoPanel(gray, W, H, p, widthMM) {
     const r = Math.max(2, Math.min(20, Math.round(0.6 / (widthMM / W))));
     gray = guidedDenoise(Float32Array.from(gray), W, H, r, 8 * p.denoise / 100);
   }
-  if (p.lithoStep) return buildSteppedPanel(gray, W, H, p, widthMM);
   const L = lithoThickness(gray, W, H, p);
   const D = lithoBulge(gray, W, H, L, p, widthMM);
   const sc = widthMM / (L.w - 1), hmm = (L.h - 1) * sc;
@@ -322,9 +203,8 @@ function buildLithoPanel(gray, W, H, p, widthMM) {
     for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++)
       if (x < framePx || y < framePx || x > L.w - 1 - framePx || y > L.h - 1 - framePx) L.Z[y * L.w + x] = p.tMax;
   }
-  // faceted: a fixed vertex budget; smooth: refine until within tolerance; grid: every vertex
-  const tri = p.lithoGrid ? gridTriangulation(L.Z, L.w, L.h, D)
-    : p.lithoSmooth ? adaptiveTriangulation(L.Z, L.w, L.h, LITHO_MAX_VERTS, smoothTol(p), D, framePx) : adaptiveTriangulation(L.Z, L.w, L.h, Math.min(p.facets, LITHO_MAX_VERTS), 0.004, D, framePx);
+  // refine until every point is within tolerance of the photo
+  const tri = adaptiveTriangulation(L.Z, L.w, L.h, LITHO_MAX_VERTS, smoothTol(p), D, framePx);
   Object.assign(tri, { widthMM, flip: !!p.flip, K: 2 * p.tMax, framePx, depth: lithoDepth(p) });
   const m = lithoManifold(tri, widthMM);
   return { panel: m, tri, hmm };

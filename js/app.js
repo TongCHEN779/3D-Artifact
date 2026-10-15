@@ -8,19 +8,16 @@ const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0
 const fmt = {
   threshold: v => v, adaptC: v => v, speck: v => v + ' mm²', lineWidth: v => (+v).toFixed(2) + ' mm',
   smoothness: v => (+v).toFixed(2), minWidth: v => (+v).toFixed(2) + ' mm', brushSize: v => v + ' mm',
-  detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm', plateT: v => (+v).toFixed(1) + ' mm', reliefH: v => (+v).toFixed(1) + ' mm',
+  detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  layer: v => (+v).toFixed(2) + ' mm', edgeSmooth: v => +v ? (+v).toFixed(2) + ' mm' : '不平滑', gridMM: v => (+v).toFixed(2) + ' mm', levels: v => v + ' 级', denoise: v => +v ? v + '%' : '关', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
+  layer: v => (+v).toFixed(2) + ' mm', edgeSmooth: v => +v ? (+v).toFixed(2) + ' mm' : '不平滑', denoise: v => +v ? v + '%' : '关', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
-// facet slider is logarithmic: 0 → 1 000 points, 100 → 2 000 000 points; the number box beside it takes any value
-const facetCount = v => { const n = 1000 * Math.pow(2000, v / 100); return n < 1e5 ? Math.round(n / 100) * 100 : Math.round(n / 1000) * 1000; };
-const facetSlider = n => Math.max(0, Math.min(100, Math.round(100 * Math.log(n / 1000) / Math.log(2000))));
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, lineMode: 2, edgeSmooth: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  facets: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, surface: 4, smoothDetail: 4, gridMM: 4, levels: 4, denoise: 4,
-  thick: 4, plateT: 4, reliefH: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
+  tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, smoothDetail: 4, denoise: 4,
+  thick: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
 };
@@ -35,15 +32,10 @@ document.querySelectorAll('.seg').forEach(el => {
   });
 });
 function setSeg(name, v) { const el = document.querySelector(`.seg[data-name="${name}"]`); el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v ? 'true' : 'false')); seg[name] = v; }
-$('facets').addEventListener('input', () => { $('facetsNum').value = facetCount(+$('facets').value); });
 document.querySelectorAll('input[type=range]').forEach(inp => {
   const out = document.querySelector(`output[for="${inp.id}"]`);
   const show = () => { if (out) out.textContent = (fmt[inp.id] || (v => v))(inp.value); };
   show(); inp.addEventListener('input', () => { show(); onChange(inp.id); });
-});
-$('facetsNum').addEventListener('change', () => {
-  const v = Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000)));
-  $('facetsNum').value = v; $('facets').value = facetSlider(v); onChange('facets');
 });
 document.querySelectorAll('input[type=checkbox], select').forEach(inp => inp.addEventListener('change', () => onChange(inp.id)));
 document.querySelectorAll('input[type=text]').forEach(inp => inp.addEventListener('input', () => onChange(inp.id)));
@@ -76,7 +68,7 @@ function P() {
   };
   const K = p.kind, lines = K !== 'litho';
   up('minWidth', r.minLine, '最细线宽', lines); up('lineWidth', p.minWidth, '线宽', lines && p.smooth);
-  snap('thick', '剪影厚度', K === 'cutout'); snap('plateT', '底板厚度', K === 'plaque'); snap('reliefH', '线条凸起', K === 'plaque');
+  snap('thick', '剪影厚度', K === 'cutout');
   up('tMin', Math.round(2 * r.d * 100) / 100, '透光最薄', !lines); if (p.tMax < p.tMin + 0.4) p.tMax = p.tMin + 0.4;
   if (p.frame > 0) up('frame', 2 * r.lineW, '边框宽度', !lines);
   snap('baseH', '底座高度', p.base !== 'none'); snap('textD', '刻字深度', !!(p.text1 || p.text2));
@@ -88,8 +80,8 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: seg.lineMode === 'uniform', lineMode: seg.lineMode, edgeSmooth: n('edgeSmooth'), lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, facets: Math.max(500, Math.min(3000000, Math.round(+$('facetsNum').value || 4000))), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, lithoFacet: seg.surface === 'facet', lithoSmooth: seg.surface === 'smooth', lithoGrid: seg.surface === 'grid', gridMM: n('gridMM'), lithoStep: seg.surface === 'step', levels: n('levels'), denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
-    thick: n('thick'), bar: $('bar').checked, plateT: n('plateT'), reliefH: n('reliefH'),
+    kind: seg.kind, tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
+    thick: n('thick'), bar: $('bar').checked,
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
   };
@@ -110,20 +102,10 @@ function syncUI() {
   $('s2body').hidden = litho; $('s2note').hidden = true;
   $('s2').closest('section').hidden = litho;   // a lithophane uses the photo directly — no line-art step
   let k = 0; document.querySelectorAll('.controls > .step').forEach(sec => { if (!sec.hidden) sec.querySelector('h2 .n').textContent = ++k; });
-  if (litho && p.lithoStep) {
-    $('facetHint').textContent = `阶梯：把厚度分成 ${Math.min(p.levels, Math.round((p.tMax - p.tMin) / p.printer.h) + 1)} 级，每一级是平台、级与级之间是竖直的墙（上下一样粗）。按打印机设置，每个凸起和缝隙至少 ${p.printer.minLine.toFixed(2)} / ${p.printer.minGap.toFixed(2)} mm 宽，每级高度取整到 ${p.printer.h.toFixed(2)} mm 层高——比细线更细的细节会被去掉，换来每一处都能打出来。级数越多越接近照片的层次，但不会多于厚度范围内的层数；明暗起伏在阶梯模式下不起作用，已隐藏。`;
-  } else if (litho && p.lithoGrid) {
-    const nx = Math.round(p.width / p.gridMM) + 1, nv = nx * nx;   // square estimate
-    $('facetHint').textContent = `规则网格：每 ${p.gridMM.toFixed(2)} mm 一个点，约 ${(nv / 1e4).toFixed(0)} 万个点、${(2 * nv / 1e4).toFixed(0)} 万个三角面（正方形图案估算），STL 约 ${Math.round(nv * 4 * 50 / 1e6)} MB。点分布均匀、表面最平顺，和大多数透光浮雕软件一样；间距小于喷嘴的一半（${(p.printer.d / 2).toFixed(2)} mm）后打印出来差别不大。`;
-  } else if (litho && p.lithoSmooth) $('facetHint').textContent = `平滑表面：网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
-  else if (litho) { const mm2 = p.width * p.width / p.facets / 2; $('facetHint').textContent = `平均每个三角面约 ${mm2 < 1 ? mm2.toFixed(2) : mm2.toFixed(1)} mm²（按正方形图案估算）。${p.printer.d} mm 喷嘴能表现的最小细节约 ${(p.printer.d * 0.75).toFixed(2)} mm，三角面小于约 0.1 mm² 后，打印出来的差别就很难看出了。右边的框可以直接输入点数（500 – 3,000,000）；30 万点约需半分钟，100 万点以上可能要几分钟、STL 上百 MB。点数不会超过照片本身的像素。`; }
+  if (litho) $('facetHint').textContent = `网格会一直加密，直到每一处与照片的误差都小于 ${smoothTol(p).toFixed(3)} mm，看不出棱角。精度越高细节越多，计算越慢、文件越大（最高精度可能需要半分钟以上，STL 可达上百 MB）。照片本身的分辨率是上限。`;
   document.querySelector('[data-tab=line]').textContent = litho ? '透光预览' : '线稿';
   $('dlLine').textContent = litho ? '保存透光预览' : '保存线稿';
-  const standing = p.base !== 'none';
-  $('t1label').textContent = standing ? '底座正面' : '牌子底部';
-  const textOff = !standing && (p.kind === 'cutout' || p.kind === 'litho');
-  $('textNote').textContent = textOff ? (litho ? '透光浮雕本身不刻字。选择底座后，可以把字刻在底座上。' : '平放的剪影没有地方刻字。选择底座，或改成浮雕牌（字会凸起在牌子底部）。')
-    : standing ? '文字刻进底座的前后两个侧面，从各自那一面看都是正的。' : '文字会凸起在牌子底部的边框里（高度同线条凸起）。';
+  $('t1label').textContent = '底座正面';
   const r = p.printer;
   $('printerNote').textContent = `线条 ≥ ${r.minLine.toFixed(2)} mm · 缝隙 ≥ ${r.minGap} mm · 文字笔画 ≥ ${r.minStroke.toFixed(2)} mm · 高度按 ${r.h.toFixed(2)} mm 层高取整` +
     (p.adjusted.length ? '。已自动调整：' + p.adjusted.join('；') + '。' : '');
@@ -368,7 +350,7 @@ async function run() {
 
 function stage1(p, c) {
   const sx = c.x0 * srcImg.width, sy = c.y0 * srcImg.height, sw = (c.x1 - c.x0) * srcImg.width, sh = (c.y1 - c.y0) * srcImg.height;
-  // lithophanes keep the photo's own resolution (up to 3000 px) so very fine facets have detail to follow
+  // lithophanes keep the photo's own resolution (up to 3000 px) so the fine mesh has detail to follow
   const cap = p.kind === 'litho' ? 3000 : 1600, capH = p.kind === 'litho' ? 3000 : 2000;
   let W = p.kind === 'litho' ? Math.min(cap, Math.round(sw)) : Math.min(cap, Math.round(p.width / 0.1)), H = Math.round(W * sh / sw);
   if (H > capH) { W = Math.round(W * capH / H); H = capH; }
@@ -403,8 +385,7 @@ function stage3(p) {
   const stats = {};
   if (p.kind === 'cutout' && p.bar) addBottomBar(m, W, H, Math.round(4 / s));
   const rMin = Math.max(1, Math.ceil((p.minWidth / s - 1) / 2)), bridgeR = rMin;   // strokes of 2·rMin+1 px are at least minWidth wide; bridges only as wide as that
-  // a relief plaque holds every line on its plate, so islands are fine there
-  const islands = p.kind === 'plaque' ? 'keep' : p.islands;
+  const islands = p.islands;
   if (islands !== 'remove') m = thickenThin(m, W, H, rMin);
   if (islands !== 'keep') m = resolveIslands(m, W, H, rMin, bridgeR, islands, stats);
   let field;
@@ -444,14 +425,9 @@ async function stage4(p) {
     if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role, M: v.M });
     else for (const q of piecesOf(pt)) show.push({ arrays: meshArrays(q.m), role: pt.role, M: q.M });
   }
-  // smooth and grid lithophanes are meant to be continuous surfaces: shade them smoothly, as they will print
+  // the lithophane is a continuous surface: shade it smoothly, as it will print
   // (flat shading exaggerates 0.01 mm facet angles into a "frosted" look that no printer reproduces)
-  if (p.kind === 'litho' && (p.lithoSmooth || p.lithoGrid)) for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
-  if (p.kind === 'plaque') for (const it of show) if (it.role === 'panel') {
-    const pos = it.arrays.pos;
-    if (p.base === 'none') it.tint = v => pos[v * 3 + 2] > p.plateT + 0.05;
-    else { let ymin = Infinity; for (let i = 1; i < pos.length; i += 3) ymin = Math.min(ymin, pos[i]); it.tint = v => pos[v * 3 + 1] < ymin + p.reliefH - 0.05; }
-  }
+  if (p.kind === 'litho') for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
   view.show(show);
   const bed = p.printer.bed;
   for (const m of built.parts) {
@@ -473,16 +449,14 @@ function updateStatus(p) {
   add(`图案 <b>${(W * s).toFixed(0)} × ${(H * s).toFixed(0)} mm</b>`);
   if (p.kind === 'litho' && cache.litho) {
     const t = cache.litho.tri;
-    if (t.stepped) add(`<b>${t.levels}</b> 级阶梯 · 级高 <b>${t.T.map(v => v.toFixed(1)).join(' / ')}</b> mm`);
-    else add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
+    add(`<b>${t.pts.length / 2}</b> 个顶点 · <b>${t.tris.length / 3}</b> 个三角面`);
     add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
     if (p.flip) add(`总厚 <b>${(2 * p.tMax - p.tMin).toFixed(1)} mm</b>（正面凸起）`);
-    if (p.bulge > 0 && !p.lithoStep) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
+    if (p.bulge > 0) add(`起伏 <b>${p.bulge.toFixed(1)} mm</b>`);
     if (built) add(`模型 <b>${built.dims.map(v => v.toFixed(0)).join(' × ')} mm</b>`);
     return;
   }
-  if (cache.kind === 'plaque') add('<span class="pill ok">线条都在底板上</span>');
-  else add(pieces === 1 ? '<span class="pill ok">线条连成一整块</span>' : `<span class="pill warn">${pieces} 块分离</span>`);
+  add(pieces === 1 ? '<span class="pill ok">线条连成一整块</span>' : `<span class="pill warn">${pieces} 块分离</span>`);
   add(`最细处 ≥ <b>${((2 * cache.rMin + 1) * s).toFixed(2)} mm</b>`);
   if (stats && stats.gapsFilled > 0.05) add(`填上 <b>${stats.gapsFilled.toFixed(1)} mm²</b> 过窄缝隙`);
   if (stats && stats.bridges) add(`补了 <b>${stats.bridges}</b> 处连接`);
@@ -597,7 +571,6 @@ function notes(p) {
   if (p.base === 'separate') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
   if (p.base === 'onepiece') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');
   if (p.base === 'none') L.push('平放打印，不需要支撑。');
-  if (p.kind === 'plaque') L.push(`浮雕牌：打到 ${p.plateT} mm 高度时换色，底板和线条就是两种颜色。`);
   if (p.kind === 'litho') L.push(`透光浮雕：厚度 ${p.tMin}–${p.tMax} mm，越厚越暗。用白色或浅色 PLA、100% 填充；竖着打印（底边朝下）表面最细腻，平放也可以。背后放一盏灯看。`);
   if (p.kind === 'litho' && p.printAid && p.base !== 'onepiece') L.push(`透光浮雕 STL 已经是竖立的打印姿态：底边朝下，带 两层厚的裙边和两侧三角支脚（与浮雕隔 0.3 mm，每 8 mm 一个小连接点）。直接切片，不用再加支撑或 brim；打完撕掉裙边、掰掉支脚，用刀修平底边再插进底座。建议 0.12–0.16 mm 层高、100% 填充、外墙速度放慢，床温略高一点（PLA 60–65 °C）帮助粘牢。`);
   if (p.kind === 'litho' && p.flip) L.push(`正面凸起：两面都有起伏（背面是反向浮雕，朝灯摆放），请竖着打印（底边朝下），不需要支撑。`);
