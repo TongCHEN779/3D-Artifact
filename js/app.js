@@ -11,15 +11,15 @@ const fmt = {
   detail: v => v + '%', width: v => v + ' mm', thick: v => v + ' mm',
   baseD: v => v + ' mm', baseH: v => v + ' mm', overhang: v => v + ' mm', insert: v => v + ' mm', clearance: v => (+v).toFixed(2) + ' mm',
   smoothDetail: v => '误差 < ' + smoothTol({ smoothDetail: v / 100 }).toFixed(3) + ' mm', tMin: v => (+v).toFixed(1) + ' mm', tMax: v => (+v).toFixed(1) + ' mm', gamma: v => (+v).toFixed(2), frame: v => (+v).toFixed(1) + ' mm', bulge: v => +v ? (+v).toFixed(1) + ' mm' : '平板',
-  lampD: v => v + ' mm', lampOpen: v => v + ' mm', copies: v => v + ' 张', lampTop: v => v + '°', lampRes: v => (+v).toFixed(2) + ' mm', neckH: v => v + ' mm', pitch: v => (+v).toFixed(1) + ' mm', snaps: v => v + ' 个', fitGap: v => (+v).toFixed(2) + ' mm',
+  lampD: v => v + ' mm', lampOpen: v => v + ' mm', lampBand: v => v + '°', copies: v => v + ' 张', lampTop: v => v + '°', lampRes: v => (+v).toFixed(2) + ' mm', neckH: v => v + ' mm', pitch: v => (+v).toFixed(1) + ' mm', snaps: v => v + ' 个', fitGap: v => (+v).toFixed(2) + ' mm',
   layer: v => (+v).toFixed(2) + ' mm', edgeSmooth: v => +v ? (+v).toFixed(2) + ' mm' : '不平滑', denoise: v => +v ? v + '%' : '关', textH: v => (+v).toFixed(1) + ' mm', textD: v => (+v).toFixed(1) + ' mm',
 };
 const isLit = k => k === 'litho' || k === 'lamp';   // models made from the photo itself, not from line art
 const stageOf = {
   width: 1, thMode: 2, threshold: 2, adaptC: 2, invert: 2, speck: 2,
   islands: 3, lineMode: 2, edgeSmooth: 3, smooth: 3, lineWidth: 3, smoothness: 3, minWidth: 3, kind: 3, bar: 3,
-  lampD: 4, lampOpen: 4, copies: 4, lampTop: 4, lampRes: 4, fix: 4, neckH: 4, pitch: 4, snaps: 4, fitGap: 4,
-  tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, smoothDetail: 4, denoise: 4,
+  lampD: 4, lampShape: 4, lampBand: 4, lampSide: 4, lampOpen: 4, copies: 4, lampTop: 4, lampRes: 4, fix: 4, neckH: 4, pitch: 4, snaps: 4, fitGap: 4,
+  lightModel: 4, tMin: 4, tMax: 4, gamma: 4, frame: 4, bulge: 4, flip: 4, printAid: 4, smoothDetail: 4, denoise: 4,
   thick: 4, base: 4, baseD: 4, baseH: 4, overhang: 4, insert: 4, clearance: 4, step: 4,
   printer: 4, bedX: 4, bedY: 4, bedZ: 4, nozzle: 3, layer: 3, walls: 3,
   text1: 4, text2: 4, font: 4, textH: 4, textD: 4,
@@ -83,7 +83,7 @@ function rawP() {
   return {
     width: n('width'), method: 'threshold', thMode: seg.thMode, threshold: n('threshold'), adaptC: n('adaptC'), invert: $('invert').checked, speck: n('speck'),
     islands: seg.islands, smooth: seg.lineMode === 'uniform', lineMode: seg.lineMode, edgeSmooth: n('edgeSmooth'), lineWidth: n('lineWidth'), smoothness: n('smoothness'), minWidth: n('minWidth'),
-    kind: seg.kind, lampD: n('lampD'), lampOpen: n('lampOpen'), copies: n('copies'), lampTop: n('lampTop'), lampRes: n('lampRes'), fix: seg.fix, neckH: n('neckH'), pitch: n('pitch'), snaps: n('snaps'), fitGap: n('fitGap'), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
+    kind: seg.kind, lightModel: seg.lightModel, lampD: n('lampD'), lampShape: seg.lampShape, lampBand: n('lampBand'), lampSide: seg.lampSide, lampOpen: n('lampOpen'), copies: n('copies'), lampTop: n('lampTop'), lampRes: n('lampRes'), fix: seg.fix, neckH: n('neckH'), pitch: n('pitch'), snaps: n('snaps'), fitGap: n('fitGap'), tMin: n('tMin'), tMax: Math.max(n('tMax'), n('tMin') + 0.4), gamma: n('gamma'), frame: n('frame'), bulge: n('bulge'), flip: $('flip').checked, printAid: $('printAid').checked, denoise: n('denoise'), smoothDetail: n('smoothDetail') / 100,
     thick: n('thick'), bar: $('bar').checked,
     base: seg.base, baseD: n('baseD'), baseH: n('baseH'), overhang: n('overhang'), insert: n('insert'), clearance: n('clearance'), step: $('step').checked,
     text1: $('text1').value.trim(), text2: $('text2').value.trim(), font: $('font').value, textH: n('textH'), textD: n('textD'),
@@ -111,7 +111,8 @@ function syncUI() {
   $('t1label').textContent = '底座正面';
   if (lamp) {
     const g = lampGeometry(p);
-    $('lampHint').textContent = `图案用墨卡托投影包在球面上，形状不变形；顶部 ${p.lampTop}° 以内和开口附近是实心的。球内壁光滑，图案刻在外面（亮处凹得深）。表面细腻度越小越细，计算越慢、文件越大。`;
+    $('lampHint').textContent = (g.band ? `球带：只取球面上下各 ${p.lampBand}° 之间，上下都开口（散热好），下沿口径约 ${(2 * g.ai).toFixed(0)} mm。` : `整球：开口直径 ${(2 * g.ai).toFixed(0)} mm，顶部封顶，球体需要支撑。`) +
+      ` 下沿处球面外倾 ${g.lowDeg.toFixed(0)}°，${g.supportFree ? '不用支撑就能打（45° 以内）。' : '超过 45°，需要支撑；要免支撑请用球带、纬度别超过 45° 左右。'} 图案用墨卡托投影包在球面上，形状不变形。表面细腻度越小越细，计算越慢、文件越大。`;
     $('fixHint').textContent = p.fix === 'thread'
       ? `螺纹：灯罩颈部是内螺纹，配套接环带外螺纹，把接环拧进去（顺时针拧紧）。螺距 ${p.pitch} mm，螺纹深 ${(0.25 * p.pitch).toFixed(2)} mm，最小通光孔径约 ${(2 * g.ai).toFixed(0)} mm。`
       : `卡点：颈部有 ${Math.round(p.snaps)} 个带钩的弹片，接环上有一圈凹槽；把接环直接推进去就“咔”一声卡住，用力向下拉可拔出。弹片是 PLA 薄片，别反复硬掰。`;
@@ -127,6 +128,7 @@ function onChange(id) {
   syncUI();
   if (id === 'brush') { if (seg.brush !== 'off') showTab('line'); drawLine(); return; }
   if (id === 'brushSize') return;
+  if (id === 'glow') { if (built) renderShow(P()); return; }
   if (id === 'kind') { invalidate(isLit(seg.kind) || isLit(cache.kind) ? 2 : 3); return; }
   if (id === 'thMode' && seg.thMode === 'manual' && cache.autoTh) $('threshold').value = cache.autoTh;
   invalidate(stageOf[id] || 4);
@@ -438,15 +440,7 @@ async function stage4(p) {
     built = buildModels(art, p, fonts);
   }
   built.meshes = built.parts;   // geometry stays in the kernel; arrays are made only when needed
-  const show = [];
-  for (const pt of built.parts) {
-    if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role, M: v.M });
-    else for (const q of piecesOf(pt)) show.push({ arrays: meshArrays(q.m), role: pt.role, M: q.M });
-  }
-  // the lithophane is a continuous surface: shade it smoothly, as it will print
-  // (flat shading exaggerates 0.01 mm facet angles into a "frosted" look that no printer reproduces)
-  if (isLit(p.kind)) for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
-  view.show(show);
+  renderShow(p);
   const bed = p.printer.bed;
   for (const m of built.parts) {
     const d = partDims(m), [a1, b1] = [Math.max(d[0], d[1]), Math.min(d[0], d[1])], [a2, b2] = [Math.max(bed[0], bed[1]), Math.min(bed[0], bed[1])];
@@ -455,6 +449,31 @@ async function stage4(p) {
   setWarnings(built.warnings);
   updateStatus(p);
   renderFiles(p);
+}
+// build the viewer's mesh list from `built` (cheap — no geometry is recomputed)
+function renderShow(p) {
+  const show = [];
+  for (const pt of built.parts) {
+    if (pt.view) for (const v of pt.view) show.push({ arrays: meshArrays(v.m), role: v.role, M: v.M });
+    else for (const q of piecesOf(pt)) show.push({ arrays: meshArrays(q.m), role: pt.role, M: q.M });
+  }
+  // the lithophane is a continuous surface: shade it smoothly, as it will print
+  // (flat shading exaggerates 0.01 mm facet angles into a "frosted" look that no printer reproduces)
+  if (isLit(p.kind)) for (const it of show) if (it.role === 'panel' || it.role === 'combo') it.smoothShade = true;
+  // back-lit preview: colour every vertex by how much light the wall lets through, like a lit lamp
+  if (p.kind === 'lamp' && $('glow').checked && cache.lamp) {
+    const { cz, Ri, R, neckH } = cache.lamp;
+    for (const it of show) if (it.role === 'panel') {
+      const pos = it.arrays.pos;
+      it.glow = v => {
+        const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2];
+        if (z < neckH - 0.01) return null;                                  // the neck stays plain
+        const rr = Math.sqrt(x * x + y * y + (z - cz) * (z - cz)), t = cache.lamp.inside ? cache.lamp.wallAt(x, y, z - cz) : rr - Ri;
+        return Math.min(1, Math.exp(-LIGHT_K * (t - p.tMin)));
+      };
+    }
+  }
+  view.show(show);
 }
 
 // ---------- status ----------
@@ -466,7 +485,8 @@ function updateStatus(p) {
   const { W, H, s, pieces, stats } = cache;
   if (p.kind === 'lamp' && cache.lamp && built) {
     const i = cache.lamp;
-    add(`球径 <b>${p.lampD} mm</b> · 开口 <b>${(2 * i.ai).toFixed(0)} mm</b>`);
+    add(`球径 <b>${p.lampD} mm</b> · ${i.band ? '球带' : '整球'} · 开口 <b>${(2 * i.ai).toFixed(0)} mm</b>`);
+    add(i.supportFree ? '<span class="pill ok">免支撑</span>' : '<span class="pill warn">需要支撑</span>');
     add(`每张图占 <b>${(i.span * 180 / Math.PI).toFixed(0)}°</b>${i.copies > 1 ? ` × ${i.copies} 张` : ''}`);
     add(`灯罩 <b>${(built.parts[0].manifold.numTri() / 1000).toFixed(0)}</b> 千个三角面`);
     add(`厚度 <b>${p.tMin.toFixed(1)}–${p.tMax.toFixed(1)} mm</b>`);
@@ -533,6 +553,9 @@ const view = (() => {
     for (const it of list) {
       let g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(it.arrays.pos, 3)); g.setIndex(new THREE.BufferAttribute(it.arrays.idx, 1));
+      if (it.glow) { const nv = it.arrays.pos.length / 3, col = new Float32Array(nv * 3), plain = new THREE.Color(colors.panel);
+        for (let v = 0; v < nv; v++) { const b = it.glow(v); if (b == null) { col[v * 3] = plain.r; col[v * 3 + 1] = plain.g; col[v * 3 + 2] = plain.b; } else { const k = 0.1 + 0.9 * b; col[v * 3] = k; col[v * 3 + 1] = k * 0.86; col[v * 3 + 2] = k * 0.58; } }
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
       if (it.tint) { const nv = it.arrays.pos.length / 3, col = new Float32Array(nv * 3), a = new THREE.Color(colors.panel), b = new THREE.Color(0x2f3532);
         for (let v = 0; v < nv; v++) { const c = it.tint(v) ? b : a; col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b; }
         g.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
@@ -542,7 +565,7 @@ const view = (() => {
       g.computeVertexNormals();
       it.arrays = null;
       const xf = it.M;
-      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: it.tint ? 0xffffff : (colors[it.role] || 0xefe9de), vertexColors: !!it.tint, roughness: 0.6, metalness: 0.02 }));
+      const mesh = new THREE.Mesh(g, (it.glow ? new THREE.MeshBasicMaterial({ vertexColors: true }) : new THREE.MeshStandardMaterial({ color: it.tint ? 0xffffff : (colors[it.role] || 0xefe9de), vertexColors: !!it.tint, roughness: 0.6, metalness: 0.02 })));
       if (xf) { mesh.matrixAutoUpdate = false; mesh.matrix.set(xf[0], xf[1], xf[2], xf[3], xf[4], xf[5], xf[6], xf[7], xf[8], xf[9], xf[10], xf[11], 0, 0, 0, 1); }
       group.add(mesh); mesh.updateMatrixWorld(true); box.expandByObject(mesh);
     }
@@ -598,7 +621,7 @@ function notes(p) {
   L.push('');
   if (p.kind === 'lamp') {
     L.push(p.fix === 'thread' ? `螺纹固定：灯罩颈部是内螺纹，接环是外螺纹（螺距 ${p.pitch} mm，右旋，配合间隙 ${p.fitGap} mm）。拧不动就用小刀修一下螺纹，太松就把配合间隙调小再打。` : `卡点固定：颈部 ${Math.round(p.snaps)} 个弹片带内钩，接环有一圈凹槽，直接推入即可卡住。弹片较薄，打印时请把外墙圈数设多一点，别用太快的速度。`);
-    L.push(`球形灯罩：球径 ${p.lampD} mm，壁厚 ${p.tMin}–${p.tMax} mm，越厚越暗。STL 是使用姿态（颈口朝下，z = 0 在颈口）。球体下半部分向外鼓出，需要支撑（建议只在“接触底板”之外的位置用树状支撑），内侧顶部也需要少量支撑；用白色或浅色 PLA、100% 填充，0.12–0.16 mm 层高。灯座接环平放（法兰朝下）打印，不需要支撑。LED 灯请选发热小的，别让灯泡贴近塑料。`);
+    L.push(`球形灯罩：球径 ${p.lampD} mm，壁厚 ${p.tMin}–${p.tMax} mm，越厚越暗。STL 是使用姿态（颈口朝下，z = 0 在颈口）。${cache.lamp && cache.lamp.supportFree ? '球带的上下沿都在 45° 以内，不需要支撑。' : '下沿处球面外倾超过 45°，需要支撑（树状支撑即可）；整球封顶的内侧顶部也需要少量支撑。'}用白色或浅色 PLA、100% 填充，0.12–0.16 mm 层高。灯座接环平放（法兰朝下）打印，不需要支撑。LED 灯请选发热小的，别让灯泡贴近塑料。`);
   }
   if (p.base === 'separate' && p.kind !== 'lamp') L.push((p.kind === 'litho' ? '透光浮雕单独打印（竖着打印更细腻）；' : '图案平放打印；') + `底座正放打印。卡槽 ${built.slot.w.toFixed(2)} × ${built.slot.t.toFixed(2)} mm，深 ${built.slot.depth.toFixed(1)} mm（每边留 ${p.clearance} mm 间隙）。太松可以滴一点胶。`);
   if (p.base === 'onepiece' && p.kind !== 'lamp') L.push('一体式：底座朝下直接打印。图案较薄，建议降低打印速度。');

@@ -102,17 +102,21 @@
         </div>
         <div class="group" data-show="p.kind === 'lamp'"><div class="gtitle">球体</div>
           <div class="row"><label for="lampD">球直径</label><input type="range" id="lampD" min="60" max="200" step="5" value="110"><output for="lampD"></output></div>
-          <div class="row"><label for="lampOpen">开口直径</label><input type="range" id="lampOpen" min="30" max="100" step="1" value="50"><output for="lampOpen"></output></div>
+          <div class="row two"><label>灯罩形状</label><div class="seg" data-name="lampShape"><button type="button" data-v="band" aria-pressed="true">球带（免支撑）</button><button type="button" data-v="sphere">整球（需支撑）</button></div></div>
+          <div class="row" data-show="p.lampShape === 'band'"><label for="lampBand">纬度范围 ±</label><input type="range" id="lampBand" min="20" max="60" step="1" value="42"><output for="lampBand"></output></div>
+          <div class="row" data-show="p.lampShape === 'sphere'"><label for="lampOpen">开口直径</label><input type="range" id="lampOpen" min="30" max="100" step="1" value="50"><output for="lampOpen"></output></div>
           <div class="row"><label for="copies">图案张数</label><input type="range" id="copies" min="1" max="6" step="1" value="1"><output for="copies"></output></div>
-          <div class="row"><label for="lampTop">顶部留白</label><input type="range" id="lampTop" min="5" max="60" step="1" value="25"><output for="lampTop"></output></div>
+          <div class="row" data-show="p.lampShape === 'sphere'"><label for="lampTop">顶部留白</label><input type="range" id="lampTop" min="5" max="60" step="1" value="25"><output for="lampTop"></output></div>
+          <div class="row two"><label>图案刻在</label><div class="seg" data-name="lampSide"><button type="button" data-v="outside" aria-pressed="true">外表面</button><button type="button" data-v="inside">内表面</button></div></div>
           <div class="row"><label for="lampRes">表面细腻度</label><input type="range" id="lampRes" min="0.3" max="1.2" step="0.05" value="0.6"><output for="lampRes"></output></div>
+          <label class="check"><input type="checkbox" id="glow">3D 预览里模拟点亮（背光效果）</label>
           <p class="hint" id="lampHint"></p>
         </div>
         <div class="group" data-show="p.kind === 'lamp'"><div class="gtitle">底部固定方式</div>
           <div class="seg" data-name="fix"><button type="button" data-v="thread" aria-pressed="true">螺纹旋转</button><button type="button" data-v="snap">几点卡住</button></div>
           <div class="row"><label for="neckH">颈部高度</label><input type="range" id="neckH" min="10" max="30" step="1" value="16"><output for="neckH"></output></div>
           <div class="row" data-show="p.fix === 'thread'"><label for="pitch">螺距</label><input type="range" id="pitch" min="2.5" max="5" step="0.5" value="3"><output for="pitch"></output></div>
-          <div class="row" data-show="p.fix === 'snap'"><label for="snaps">卡点数量</label><input type="range" id="snaps" min="3" max="8" step="1" value="4"><output for="snaps"></output></div>
+          <div class="row" data-show="p.fix === 'snap'"><label for="snaps">卡点数量</label><input type="range" id="snaps" min="3" max="12" step="1" value="4"><output for="snaps"></output></div>
           <div class="row"><label for="fitGap">配合间隙</label><input type="range" id="fitGap" min="0.1" max="0.5" step="0.05" value="0.25"><output for="fitGap"></output></div>
           <p class="hint" id="fixHint"></p>
         </div>
@@ -123,6 +127,7 @@
         <div class="group" data-show="p.kind === 'litho' || p.kind === 'lamp'"><div class="gtitle">厚度与照片</div>
           <div class="row"><label for="tMin">最薄（亮处）</label><input type="range" id="tMin" min="0.4" max="2" step="0.1" value="0.8"><output for="tMin"></output></div>
           <div class="row"><label for="tMax">最厚（暗处）</label><input type="range" id="tMax" min="1.6" max="6" step="0.1" value="3.2"><output for="tMax"></output></div>
+          <div class="row two"><label>明暗换算</label><div class="seg" data-name="lightModel"><button type="button" data-v="physical" aria-pressed="true">按透光规律</button><button type="button" data-v="linear">线性</button></div></div>
           <div class="row"><label for="gamma">对比度</label><input type="range" id="gamma" min="0.5" max="2" step="0.05" value="1"><output for="gamma"></output></div>
           <div class="row"><label for="denoise">平滑底色</label><input type="range" id="denoise" min="0" max="100" step="5" value="40"><output for="denoise"></output></div>
           <div class="row"><label for="frame">边框宽度</label><input type="range" id="frame" min="0" max="10" step="0.5" value="3"><output for="frame"></output></div>
@@ -212,8 +217,8 @@
 <script src="js/raster.js?v=46bcd837"></script>
 <script src="js/lineart.js?v=72b3417d"></script>
 <script src="js/models.js?v=746f8647"></script>
-<script src="js/litho.js?v=c5daf756"></script>
-<script src="js/lamp.js?v=3"></script>
-<script src="js/app.js?v=lamp1"></script>
+<script src="js/litho.js?v=lm1"></script>
+<script src="js/lamp.js?v=6"></script>
+<script src="js/app.js?v=lamp4"></script>
 </body>
 </html>

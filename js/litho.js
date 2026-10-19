@@ -3,6 +3,16 @@
 // adaptive triangulation: vertices are inserted where the flat facets deviate most from the
 // target, so facets are small around eyes, mouth and outlines and large in smooth areas.
 
+// Darkness d∈[0,1] → wall thickness. Light through a plastic wall falls off exponentially, brightness ≈ exp(−K·t),
+// so the 'physical' model makes brightness (not thickness) linear in the photo: the thinnest wall passes everything,
+// the thickest passes bMin = exp(−K·(tMax−tMin)). The 'linear' model just interpolates thickness.
+const LIGHT_K = 1.1;   // per mm, white PLA — the same value the back-lit preview uses
+function thicknessFromDark(d, p) {
+  if (p.lightModel === 'linear') return p.tMin + (p.tMax - p.tMin) * d;
+  const bMin = Math.exp(-LIGHT_K * (p.tMax - p.tMin)), b = 1 - d * (1 - bMin);
+  return p.tMin - Math.log(b) / LIGHT_K;
+}
+
 function lithoThickness(gray, W, H, p) {
   // analysis grid: about 6 px per vertex spacing, between 600 px and the image's own resolution
   // smooth surface: about 0.15 mm per analysis pixel and a slightly softer image, so the mesh can follow gentle shading
@@ -14,7 +24,7 @@ function lithoThickness(gray, W, H, p) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = g[Math.min(H - 1, Math.round((y + 0.5) / k - 0.5)) * W + Math.min(W - 1, Math.round((x + 0.5) / k - 0.5))];
     const dark = Math.min(1, Math.max(0, 1 - v / 255));
-    Z[y * w + x] = p.tMin + (p.tMax - p.tMin) * Math.pow(dark, p.gamma);
+    Z[y * w + x] = thicknessFromDark(Math.pow(dark, p.gamma), p);
   }
   return { Z, w, h, k };
 }

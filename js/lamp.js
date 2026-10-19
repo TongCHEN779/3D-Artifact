@@ -1,6 +1,6 @@
 // ===== Spherical lamp shade =====
 // A lithophane wrapped around a sphere. The photo is mapped with a Mercator projection (shapes stay undistorted),
-// the outer surface is carved inwards where the photo is bright, the inside is a smooth ball. The bottom is open:
+// the surface facing out (or in) is carved where the photo is bright, the other side is a smooth ball. The bottom is open:
 // a neck tube with either an internal thread or a few snap hooks, plus a matching adapter ring to attach to a lamp base.
 // Axis = z, bottom of the neck on z = 0.
 
@@ -17,25 +17,33 @@ function threadRing(rBase, depth, pitch, crestAx) {
   return pts;
 }
 
+// Printing without supports: going up, a wall that leans outward overhangs. On a sphere that is the lower half, at the
+// latitude of its bottom edge; the inside of the upper half overhangs the same way, so a closed top needs supports too.
+// A "band" (zone of the sphere, open at both ends, ±latitude) with both edges within ~45° prints without any.
 function lampGeometry(p) {
-  const R = p.lampD / 2, Ri = R - p.tMax;
-  let ai = Math.min(p.lampOpen / 2, Ri * 0.85);                      // bore radius (clear opening)
+  const R = p.lampD / 2, Ri = R - p.tMax, band = p.lampShape === 'band';
   const thread = p.fix === 'thread', pitch = p.pitch, dT = 0.25 * pitch, crest = 0.15 * pitch, gap = p.fitGap;
-  const wall = thread ? dT + 2.2 : 2.4;
-  const z0 = -Math.sqrt(Ri * Ri - ai * ai);                           // plane where the inner ball is exactly as wide as the bore
-  const rOutPlane = Math.sqrt(R * R - z0 * z0);
-  let Ro = ai + wall;
-  if (Ro > rOutPlane - 0.3) Ro = rOutPlane - 0.3;
-  return { R, Ri, ai, z0, rOutPlane, Ro, thread, pitch, dT, crest, gap, neckH: p.neckH, thetaP: Math.acos(z0 / R), thinWall: Ro - ai < wall - 0.01 };
+  let z0, ai, zt = null;
+  if (band) {
+    const lat = Math.min(60, Math.max(20, p.lampBand)) * Math.PI / 180;
+    z0 = -R * Math.sin(lat); zt = -z0; ai = Math.sqrt(Ri * Ri - z0 * z0);   // bore = inner ball's width at the cut
+  } else {
+    ai = Math.min(p.lampOpen / 2, Ri * 0.85);                         // bore radius (clear opening)
+    z0 = -Math.sqrt(Ri * Ri - ai * ai);                               // plane where the inner ball is exactly as wide as the bore
+  }
+  const wall = thread ? dT + 2.2 : 2.4, Ro = ai + wall;               // the neck may be a little wider than the sphere's edge: it is a collar
+  const lowDeg = Math.asin(Math.abs(z0) / R) * 180 / Math.PI, topDeg = zt == null ? 90 : lowDeg;
+  return { R, Ri, ai, z0, zt, Ro, thread, pitch, dT, crest, gap, neckH: p.neckH, thetaP: Math.acos(z0 / R), thetaA: zt == null ? null : Math.acos(zt / R), lowDeg, topDeg, band, supportFree: lowDeg <= 47 && topDeg <= 47 };
 }
 
 function buildLamp(gray, W, H, p) {
   const { Manifold, CrossSection } = MF, warnings = [];
   const g = lampGeometry(p), { R, Ri, ai, z0, Ro, thread, pitch, dT, crest, gap, neckH } = g;
-  if (g.thinWall) warnings.push('开口太大，颈部管壁变薄了。请加大球径或减小开口直径。');
+  const inside = p.lampSide === 'inside';
+  if (g.lowDeg > 47) warnings.push(`灯罩下沿处球面外倾 ${g.lowDeg.toFixed(0)}°（超过 45° 左右），需要支撑。加大开口直径，或改用“球带”，可免支撑。`);
 
   // ----- mapping photo → sphere -----
-  const thA = Math.max(5, Math.min(p.lampTop, (g.thetaP * 180 / Math.PI) - 25)) * Math.PI / 180, thP = g.thetaP;
+  const thA = g.band ? g.thetaA : Math.max(5, Math.min(p.lampTop, (g.thetaP * 180 / Math.PI) - 25)) * Math.PI / 180, thP = g.thetaP;
   const mA = mercator(thA), dm = mercator(thP) - mA, n = Math.max(1, Math.round(p.copies));
   const natural = dm * W / H, tile = 2 * Math.PI / n, span = Math.min(natural, tile);
   if (n > 1 && natural > tile + 1e-6) warnings.push(`${n} 张图排不下（每张最多 ${(tile * 180 / Math.PI).toFixed(0)}°，图片需要 ${(natural * 180 / Math.PI).toFixed(0)}°），图案被横向压窄了。减少张数或裁剪一下图片。`);
@@ -50,7 +58,7 @@ function buildLamp(gray, W, H, p) {
   const bl = gaussBlur(gray, W, H, Math.max(0.5, 0.5 / k)), Z = new Float32Array(wg * hg);
   for (let y = 0; y < hg; y++) for (let x = 0; x < wg; x++) {
     const v = bl[Math.min(H - 1, Math.round((y + 0.5) / k - 0.5)) * W + Math.min(W - 1, Math.round((x + 0.5) / k - 0.5))];
-    Z[y * wg + x] = p.tMin + (p.tMax - p.tMin) * Math.pow(Math.min(1, Math.max(0, 1 - v / 255)), p.gamma);
+    Z[y * wg + x] = thicknessFromDark(Math.pow(Math.min(1, Math.max(0, 1 - v / 255)), p.gamma), p);
   }
   const thickAt = (u, v) => {
     const fx = Math.min(wg - 1, Math.max(0, u * wg - 0.5)), fy = Math.min(hg - 1, Math.max(0, v * hg - 0.5));
@@ -58,24 +66,26 @@ function buildLamp(gray, W, H, p) {
     return (Z[y0 * wg + x0] * (1 - ax) + Z[y0 * wg + x1] * ax) * (1 - ay) + (Z[y1 * wg + x0] * (1 - ax) + Z[y1 * wg + x1] * ax) * ay;
   };
   const front = -Math.PI / 2, frame = p.frame;
-  const radiusAt = (x, y, z) => {
+  // wall thickness at a point of the sphere (full thickness outside the pictures and in the frame)
+  const wallAt = (x, y, z) => {
     const r0 = Math.sqrt(x * x + y * y + z * z), th = Math.acos(Math.max(-1, Math.min(1, z / r0)));
-    if (th <= thA || th >= thP) return R;
+    if (th <= thA || th >= thP) return p.tMax;
     let d = Math.atan2(y, x) - front; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));   // −π … π
     const kk = Math.round(d / tile), rel = d - kk * tile, u = rel / span + 0.5;
-    if (u < 0 || u > 1) return R;
+    if (u < 0 || u > 1) return p.tMax;
     const sn = Math.sin(th), eu = Math.min(u, 1 - u) * span * R * sn, ev = R * Math.min(th - thA, thP - th);
-    if (Math.min(eu, ev) < frame) return R;
-    return Ri + thickAt(u, (mercator(th) - mA) / dm);
+    if (Math.min(eu, ev) < frame) return p.tMax;
+    return thickAt(u, (mercator(th) - mA) / dm);
   };
+  const carve = (ball, radiusOf) => G(ball.warp(v => { const k = radiusOf(wallAt(v[0], v[1], v[2])) / Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); v[0] *= k; v[1] *= k; v[2] *= k; }));
 
-  // ----- shell: carved outer ball minus smooth inner ball -----
+  // ----- shell: the carved ball (outside or inside) and a smooth one, cut to the band -----
   const segs = Math.max(96, Math.min(1800, Math.round(2 * Math.PI * R / res)));
-  const ball = G(Manifold.sphere(R, segs));
-  const carved = G(ball.warp(v => { const r = radiusAt(v[0], v[1], v[2]) / Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); v[0] *= r; v[1] *= r; v[2] *= r; }));
-  const cap = G(carved.trimByPlane([0, 0, 1], z0));
-  const inner = G(Manifold.sphere(Ri, Math.max(96, Math.min(360, segs))));
-  const shell = G(cap.subtract(inner));
+  const outerBall = inside ? G(Manifold.sphere(R, Math.max(96, Math.min(360, segs)))) : carve(G(Manifold.sphere(R, segs)), t => Ri + t);
+  const innerBall = inside ? carve(G(Manifold.sphere(Ri, segs)), t => R - t) : G(Manifold.sphere(Ri, Math.max(96, Math.min(360, segs))));
+  let cap = G(outerBall.trimByPlane([0, 0, 1], z0));
+  if (g.zt != null) cap = G(cap.trimByPlane([0, 0, -1], -g.zt));
+  const shell = G(cap.subtract(innerBall));
 
   // ----- neck -----
   const zb = z0 - neckH, SEG = 120;
@@ -86,7 +96,7 @@ function buildLamp(gray, W, H, p) {
     const void_ = G(G(new CrossSection([ring], 'Positive')).extrude(len, Math.ceil(len / pitch * 72), -360 * len / pitch));
     neck = G(neck.subtract(G(void_.translate([0, 0, zb - 0.5]))));
   } else {
-    const tabs = Math.max(3, Math.min(8, Math.round(p.snaps))), tabW = Math.max(6, Math.min(11, 2 * Math.PI * ai / tabs * 0.38)), slotW = 1.0, ring = 3.2;
+    const tabs = Math.max(3, Math.min(12, Math.round(p.snaps))), tabW = Math.max(6, Math.min(11, 2 * Math.PI * ai / tabs * 0.38)), slotW = 1.0, ring = 3.2;
     const hh = 0.9, hx = tabW - 0.6;
     const cuts = [], hooks = [];
     for (let i = 0; i < tabs; i++) {
@@ -131,5 +141,5 @@ function buildLamp(gray, W, H, p) {
   adapter = G(adapter.subtract(Manifold.union([hole(30), hole(150), hole(270)])));
 
   const tri = { grid: true, Z, w: wg, h: hg, widthMM: arcW };
-  return { shade, adapter, tri, warnings, info: { R, Ri, ai, Ro, z0, neckH, span, natural, copies: n, flangeR, thread } };
+  return { shade, adapter, tri, warnings, info: { wallAt, inside, supportFree: g.supportFree, lowDeg: g.lowDeg, band: g.band, cz: neckH - z0, R, Ri, ai, Ro, z0, neckH, span, natural, copies: n, flangeR, thread } };
 }
