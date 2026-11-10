@@ -2,29 +2,54 @@
 
 **Turn a line drawing or photo into a 3D-printable model — right in your browser.**
 
-Upload an image and choose what to print: a free-standing cut-out silhouette made from clean black-and-white line art, or a lithophane that shows the photo when lit from behind. Add an optional stand (one-piece or slot-fit) with text engraved on the base. Everything runs locally in the browser; your images never leave your computer.
+Everything runs locally; your images never leave your computer.
 
 **Live demo:** https://tongchen779.github.io/3D-Artifact/
 
 ![Screenshot](docs/screenshot.png)
 
+## What it makes
+
+| Model | Input | Result |
+|---|---|---|
+| **Cut-out silhouette** | clean line art, sketch or photo | the lines as one connected, free-standing piece |
+| **Lithophane** | photo | a flat plate that shows the photo when lit from behind |
+| **Spherical lamp shade** | photo | a lithophane wrapped around a sphere, with a screw or snap-fit neck and a matching adapter ring |
+
+Cut-outs and flat lithophanes can get an optional stand (one-piece or slot-fit) with text engraved on it.
+
 ## Features
 
-- **Line art from drawings and illustrations**: automatic, manual or adaptive threshold, crop, invert, speck removal, and an erase/draw brush for touch-ups.
-- **Printable lines**: thin strokes are thickened to a minimum width, and floating pieces are bridged to their nearest neighbour (or removed).
-- **Smooth, even strokes**: optionally re-draws every line along its centre with a uniform width, while large filled areas stay solid.
-- **Three model types**:
-  - *Cut-out silhouette*: the line art as a single connected piece.
-  - *Lithophane*: thickness follows darkness, so the photo appears when back-lit. The surface is an error-driven adaptive triangulation — vertices are added where flat facets deviate most from the photo, so facets are small around eyes, mouth and outlines and large in smooth areas. By default the front relief is inverted (*face forward*): the front is offset by the thickness and the back by twice the thickness, so bright areas such as the face stand out while every point keeps the same thickness. The surface is *smooth*: the mesh is refined until it is within a chosen tolerance (down to about 0.004 mm) of the photo everywhere, so no facet edges show. An optional *brightness bulge* curves the whole panel so bright areas (usually the face) come forward, while the thickness — and so the back-lit image — stays the same. Smoothness, thickness range, contrast, bulge and frame are adjustable, and a back-lit preview shows the result before printing.
-- **Print-ready lithophanes**: printed on its own, the lithophane is exported standing on its bottom edge with a peel-off brim and two snap-off side fins, so the tall thin plate prints without wobbling or tipping.
-- **Matched to your printer**: pick the printer, nozzle, layer height and wall count; lines are widened to what the nozzle can print, gaps narrower than the nozzle are closed, text strokes are thickened, heights are rounded to whole layers, and parts that don't fit the build volume are flagged.
-- **Stand**: none, one-piece, or a separate base with a slot (adjustable depth, height, overhang, insert depth and clearance).
-- **Engraving**: text on the front and back of the base, in handwriting, serif or sans fonts, or upload your own `.ttf`/`.otf` (e.g. for Chinese text).
-- **Export**: watertight binary STL files, the line art or back-lit preview, a rendered 3D preview and print notes, individually or as one ZIP.
+### Cut-out silhouette
+- Line art from drawings: automatic, manual or adaptive threshold, crop, invert, speck removal, and an erase/draw brush for touch-ups.
+- Printable lines: thin strokes are thickened to a minimum width; floating pieces are bridged to their neighbour (or removed).
+- Optional uniform-width redraw of every line along its centre, while large filled areas stay solid.
+
+### Lithophane (flat)
+- Thickness follows darkness: the photo is converted to luminance and mapped to wall thickness. Brightness falls off exponentially with thickness, so the default **physical** mapping makes the *brightness* linear in the photo (a *linear* thickness mapping is also available).
+- The surface is an error-driven adaptive triangulation: points are added where it deviates from the photo, so detail is fine around eyes and outlines and coarse in smooth areas. *Smoothness* sets the tolerance (down to about 0.004 mm).
+- Edge-preserving denoise, contrast, thickness range, frame and an optional *face forward* relief.
+- An optional *brightness bulge* curves the plate so bright areas come forward without changing the back-lit image.
+- Printed on its own, the plate is exported standing on its edge with a peel-off brim and two snap-off fins.
+- A back-lit preview shows the result before printing.
+
+### Spherical lamp shade
+- The photo is wrapped on the sphere with a **Mercator** projection, so shapes are not distorted. Several copies can go around the sphere.
+- **Shape**: a *band* (a zone of the sphere, open at both ends, prints without supports while its edges lean ≤ 45°) or a *full sphere* (closed top, needs supports). The support check is shown for your settings.
+- **Relief on the outside or the inside** surface; the other side is a smooth ball.
+- **Bottom fixing**: *screw* (internal thread on the shade, external thread on the adapter ring) or *snap* (flexible hooked tabs on the shade, a groove on the ring). Thread pitch, number of tabs, neck height and fit clearance are adjustable. The adapter ring has a flange with three screw holes.
+- A back-lit 3D preview shows the lit lamp.
+- Exported in use position (neck down); the shade and the ring are separate STL files.
+
+### For all models
+- **Matched to your printer**: pick printer, nozzle, layer height and wall count; lines are widened to what the nozzle can print, narrow gaps are closed, heights are rounded to whole layers, and parts that don't fit the build volume are flagged.
+- **Only the relevant settings are shown** for the chosen model and mode.
+- **Text engraving** (stand models): handwriting, serif or sans fonts, or upload your own `.ttf`/`.otf` (e.g. for Chinese text).
+- **Export**: watertight binary STL, the line art or back-lit preview, a rendered 3D preview and print notes, individually or as one ZIP.
 
 ## Use it locally
 
-The page loads WebAssembly and font files, so it has to be served over HTTP (opening `index.html` directly from disk will not work):
+The page loads WebAssembly and font files, so it must be served over HTTP (opening `index.html` from disk will not work):
 
 ```bash
 python3 -m http.server 8000
@@ -33,7 +58,7 @@ python3 -m http.server 8000
 
 ## Deploy to GitHub Pages
 
-Push this folder to the repository, then go to **Settings → Pages**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`. The site appears at `https://<user>.github.io/<repo>/` after a minute or two. No build step is needed.
+Push to the repository, then **Settings → Pages → Deploy from a branch**, branch `main`, folder `/ (root)`. No build step is needed.
 
 ## Project structure
 
@@ -43,7 +68,8 @@ css/style.css         styles (light and dark theme)
 js/raster.js          distance transform, morphology, labelling, thinning
 js/lineart.js         binarise → clean → connect → smooth pipeline
 js/models.js          contours → Manifold geometry, stand, text, STL and ZIP export
-js/litho.js           lithophane: adaptive triangulation, solid mesh, back-lit preview
+js/litho.js           flat lithophane: thickness mapping, adaptive triangulation, back-lit preview
+js/lamp.js            spherical lamp shade: sphere mapping, thread / snap neck, adapter ring
 js/app.js             UI, pipeline orchestration, 3D viewer
 vendor/               three.js r128, d3 7.8.5, opentype.js 1.3.4, manifold-3d 3.5.1
 fonts/                Dancing Script Bold, DejaVu Serif Bold, Inter SemiBold (Latin subsets)
@@ -51,4 +77,4 @@ fonts/                Dancing Script Bold, DejaVu Serif Bold, Inter SemiBold (La
 
 ## Credits and licences
 
-The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences, included next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT). Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).
+The app code is released under the MIT licence (see `LICENSE`). Bundled libraries keep their own licences next to each file: [Manifold](https://github.com/elalish/manifold) (Apache-2.0), [three.js](https://threejs.org) (MIT), [d3](https://d3js.org) (ISC) and [opentype.js](https://opentype.js.org) (MIT). Fonts: Dancing Script and Inter (SIL Open Font License 1.1, `fonts/OFL-1.1.txt`) and DejaVu Serif (`fonts/DejaVu-LICENSE.txt`).
